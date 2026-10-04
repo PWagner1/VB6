@@ -112,6 +112,14 @@ credentials stay in memory and are not included in project exports. See the
 [MCP setup, security, protocol matrix and API guide](docs/MCP.md) for direct-server
 connections, desktop client configuration, OAuth, deployment choices and tests.
 
+### Compiler/runtime compatibility workstream
+
+The current development source adds computed branches and numbered error handling,
+compile-time constant/Enum binding, exact Variant Decimal values, all thirteen
+financial intrinsics, and string/whole-array corrections. These run in exported
+standalone apps as well as the IDE. See [implemented contracts, limits and tests](docs/COMPILER-RUNTIME.md).
+This is not a claim of complete native VB6 conformance.
+
 ## Windows executables
 
 Two JavaScript-driven build targets are available: **modern Windows portable EXEs** with a bundled Electron/WebGPU host and native form windows, and **classic VB6 runtime EXEs** built by a separately installed licensed `VB6.EXE` compiler. See [Windows builds](docs/WINDOWS-BUILDS.md) for commands, architecture, validation and compatibility boundaries.
