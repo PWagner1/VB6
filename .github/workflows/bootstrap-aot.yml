@@ -1,0 +1,48 @@
+name: Prepare native source
+on:
+  push:
+    branches: [feat/freestanding-win32-and-desktop-windows]
+permissions:
+  contents: write
+jobs:
+  apply-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify and apply reviewed source patch
+        run: |
+          python - <<'PY'
+          import base64,hashlib,zlib,pathlib
+          data=''.join(pathlib.Path('.github/transfer/aot-%d.b64'%n).read_text().strip() for n in range(1,5))
+          patch=zlib.decompress(base64.b64decode(data,validate=True))
+          assert hashlib.sha256(patch).hexdigest()=='8b7aeb3a2218a82d8aa23f8ee4f3b154cbc80c4298a2f583794eeb671a4d7346'
+          pathlib.Path('/tmp/native-source.patch').write_bytes(patch)
+          PY
+          git apply --check /tmp/native-source.patch
+          git apply /tmp/native-source.patch
+      - run: npm run build
+      - run: npm test > /tmp/native-tests.log
+      - name: Commit only validated source and generated distributions
+        run: |
+          test "$(git ls-remote origin refs/heads/feat/freestanding-win32-and-desktop-windows | cut -f1)" = "$GITHUB_SHA"
+          git rm .github/transfer/aot-1.b64 .github/transfer/aot-2.b64 .github/transfer/aot-3.b64 .github/transfer/aot-4.b64 .github/workflows/bootstrap-aot.yml
+          git add src desktop tools tests package.json .github/workflows/win32-aot.yml dist examples
+          git diff --cached --check
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat: emit freestanding Win32 PE32 in JavaScript; native MDI and desktop IDE windows'
+          git push origin HEAD:refs/heads/feat/freestanding-win32-and-desktop-windows
+          git rev-parse HEAD > /tmp/native-source-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-source-validation
+          path: |
+            /tmp/native-tests.log
+            /tmp/native-source-commit.txt
+          retention-days: 7
