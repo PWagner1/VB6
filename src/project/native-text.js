@@ -3,10 +3,10 @@ import {decodeANSI,encodeANSI} from '../runtime/binary-codec.js';
 import {VBError} from '../language/lexer.js';
 import {fromBase64,toBase64} from './binary-assets.js';
 
-export const NATIVE_ENCODINGS=['auto','windows-1252','windows-1250','windows-1251','windows-1253','windows-1254','windows-1255','windows-1256','windows-1257','windows-1258','windows-874','shift_jis','gbk','big5','euc-kr','utf-8'];
+export const NATIVE_ENCODINGS=['auto','windows-1252','windows-1250','windows-1251','windows-1253','windows-1254','windows-1255','windows-1256','windows-1257','windows-1258','windows-874','shift_jis','gbk','big5','euc-kr','utf-8','utf-16le','utf-16be'];
 const encoders=new Map();
 const fail=message=>{throw new VBError(message,1002);};
-export function bytesOf(value){return typeof value==='string'?new TextEncoder().encode(value):value instanceof Uint8Array?value:new Uint8Array(value);}
+export function bytesOf(value){if(typeof value==='string')return new TextEncoder().encode(value);if(ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength);if(value instanceof ArrayBuffer)return new Uint8Array(value);if(Array.isArray(value))return Uint8Array.from(value);fail('Expected text, an ArrayBuffer or a byte array');}
 export function equalBytes(a,b){a=bytesOf(a);b=bytesOf(b);return a.length===b.length&&a.every((v,i)=>v===b[i]);}
 export function linesOf(text){return String(text).match(/[^\r\n]*(?:\r\n|\r|\n|$)/g)?.filter(Boolean)||[];}
 export function lineBody(line){return line.replace(/[\r\n]+$/,'');}
@@ -38,8 +38,9 @@ function legacyEncoder(label){
   encoders.set(label,map);return map;
 }
 export function encodeNativeText(text,document={encoding:'windows-1252',bom:false},override){
-  const encoding=override&&override!=='auto'?override:document.encoding||'windows-1252';
-  if(!override&&text===document.text&&document.bytes!==undefined)return fromBase64(document.bytes);
+  document ||= {encoding:'windows-1252',bom:false};
+  const encoding=override&&override!=='auto'?new TextDecoder(override).encoding:document.encoding||'windows-1252';
+  if((!override||override==='auto')&&text===document.text&&document.bytes!==undefined)return fromBase64(document.bytes);
   if(encoding==='utf-8'){
     if(!document.bom)return text;
     const data=new TextEncoder().encode(text),bytes=new Uint8Array(data.length+3);bytes.set([239,187,191]);bytes.set(data,3);return bytes;

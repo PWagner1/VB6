@@ -555,17 +555,94 @@ function decodeVariable(bytes,schema={},current,mode='binary'){const reader=new 
 return {encodeANSI,decodeANSI,makeRecord,recordLength,encodeVariable,decodeVariable};
 })();
 
-/* ../project/frx.js */
+/* ../project/binary-assets.js */
 __modules[7]=(()=>{
 const {VBError}=__modules[2];
-const {encodeANSI,decodeANSI}=__modules[6];
+
+const MAX_RESOURCE_BYTES=20*1024*1024;
+const fail=message=>{throw new VBError(message,1002);};
+function fromBase64(data){if(typeof data!=='string'||data.length>MAX_RESOURCE_BYTES*4/3+8)fail('invalid or oversized base64 resource');let binary;try{binary=atob(data);}catch{fail('invalid base64');}return Uint8Array.from(binary,c=>c.charCodeAt(0));}
+function toBase64(bytes){if(bytes.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');let result='';for(let at=0;at<bytes.length;at+=8192)result+=String.fromCharCode(...bytes.subarray(at,at+8192));return btoa(result);}
+
+return {fromBase64,toBase64};
+})();
+
+/* ../project/native-text.js */
+__modules[8]=(()=>{
+const {decodeANSI,encodeANSI}=__modules[6];
+const {VBError}=__modules[2];
+const {fromBase64,toBase64}=__modules[7];
+/** Native project text: preserve bytes, BOMs and line endings; never replace unmappable characters. */
+
+
+
+const NATIVE_ENCODINGS=['auto','windows-1252','windows-1250','windows-1251','windows-1253','windows-1254','windows-1255','windows-1256','windows-1257','windows-1258','windows-874','shift_jis','gbk','big5','euc-kr','utf-8','utf-16le','utf-16be'];
+const encoders=new Map();
+const fail=message=>{throw new VBError(message,1002);};
+function bytesOf(value){if(typeof value==='string')return new TextEncoder().encode(value);if(ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength);if(value instanceof ArrayBuffer)return new Uint8Array(value);if(Array.isArray(value))return Uint8Array.from(value);fail('Expected text, an ArrayBuffer or a byte array');}
+function equalBytes(a,b){a=bytesOf(a);b=bytesOf(b);return a.length===b.length&&a.every((v,i)=>v===b[i]);}
+function linesOf(text){return String(text).match(/[^\r\n]*(?:\r\n|\r|\n|$)/g)?.filter(Boolean)||[];}
+function lineBody(line){return line.replace(/[\r\n]+$/,'');}
+function lineEnding(line){return line.slice(lineBody(line).length);}
+function preferredEOL(text){return text.match(/\r\n|\r|\n/)?.[0]||'\r\n';}
+function unquote(value){const s=String(value).trim();return /^"(?:[^"]|"")*"$/.test(s)?s.slice(1,-1).replace(/""/g,'"'):s;}
+function quote(value){return '"'+String(value).replace(/"/g,'""')+'"';}
+function commentAt(value){let quoted=false;for(let i=0;i<value.length;i++){if(value[i]==='"'){if(quoted&&value[i+1]==='"'){i++;continue;}quoted=!quoted;}else if(value[i]==="'"&&!quoted)return i;}return -1;}
+function replaceLineValue(line,value){const body=lineBody(line),match=body.match(/^(\s*[^=]+?\s*=\s*)(.*)$/);if(!match)return line;const at=commentAt(match[2]),tail=at<0?'':match[2].slice(at),space=at<0?'':match[2].slice(0,at).match(/\s*$/)[0];return match[1]+value+space+tail+lineEnding(line);}
+
+function decodeNativeBytes(bytes,encoding){return new TextDecoder(encoding).encoding==='windows-1252'?decodeANSI(bytes):new TextDecoder(encoding,{fatal:true,ignoreBOM:true}).decode(bytes);}
+function decodeNativeText(input,{encoding='auto'}={}){
+  // String callers have no original byte encoding; keep the legacy CRLF export convention.
+  if(typeof input==='string')return {text:input.replace(/\r\n|\r|\n/g,'\r\n'),encoding:'utf-8',bom:false};
+  const bytes=bytesOf(input);let label=encoding,bom=false,skip=0;
+  if(bytes[0]===0xef&&bytes[1]===0xbb&&bytes[2]===0xbf){label='utf-8';bom=true;skip=3;}
+  else if(bytes[0]===0xff&&bytes[1]===0xfe){label='utf-16le';bom=true;skip=2;}
+  else if(bytes[0]===0xfe&&bytes[1]===0xff){label='utf-16be';bom=true;skip=2;}
+  else if(label==='auto'){try{new TextDecoder('utf-8',{fatal:true}).decode(bytes);label='utf-8';}catch{label='windows-1252';}}
+  try{const decoder=new TextDecoder(label,{fatal:true,ignoreBOM:true});return {text:decodeNativeBytes(bytes.subarray(skip),decoder.encoding),encoding:decoder.encoding,bom,bytes:toBase64(bytes)};}
+  catch(error){fail('Cannot decode native source as '+label+': '+error.message);}
+}
+function legacyEncoder(label){
+  if(encoders.has(label))return encoders.get(label);
+  const decoder=new TextDecoder(label,{fatal:true,ignoreBOM:true}),map=new Map();
+  const add=bytes=>{try{const text=decoder.decode(bytes);if([...text].length===1&&text!=='\ufffd'&&!map.has(text))map.set(text,bytes.slice());}catch{}};
+  for(let a=0;a<256;a++)add(Uint8Array.of(a));
+  if(['shift_jis','gbk','big5','euc-kr'].includes(decoder.encoding))for(let a=0x81;a<=0xfe;a++)for(let b=0x40;b<=0xff;b++)add(Uint8Array.of(a,b));
+  encoders.set(label,map);return map;
+}
+function encodeNativeText(text,document={encoding:'windows-1252',bom:false},override){
+  document ||= {encoding:'windows-1252',bom:false};
+  const encoding=override&&override!=='auto'?new TextDecoder(override).encoding:document.encoding||'windows-1252';
+  if((!override||override==='auto')&&text===document.text&&document.bytes!==undefined)return fromBase64(document.bytes);
+  if(encoding==='utf-8'){
+    if(!document.bom)return text;
+    const data=new TextEncoder().encode(text),bytes=new Uint8Array(data.length+3);bytes.set([239,187,191]);bytes.set(data,3);return bytes;
+  }
+  if(/^utf-16(?:le|be)$/.test(encoding)){
+    const skip=document.bom?2:0,bytes=new Uint8Array(text.length*2+skip),view=new DataView(bytes.buffer),little=encoding==='utf-16le';if(skip)view.setUint16(0,0xfeff,little);for(let i=0;i<text.length;i++)view.setUint16(skip+i*2,text.charCodeAt(i),little);return bytes;
+  }
+  if(new TextDecoder(encoding).encoding==='windows-1252'){const bytes=encodeANSI(text);return bytes.every(b=>b<128)?text:bytes;}
+  const map=legacyEncoder(encoding),parts=[];let length=0;
+  for(const char of text){const data=map.get(char);if(!data)fail('Character '+quote(char)+' is not representable in '+encoding+'. Choose a matching native source encoding; no file was written.');parts.push(data);length+=data.length;}
+  const bytes=new Uint8Array(length);let offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.length;}
+  // ASCII text remains string-compatible with the existing sourceFiles API.
+  return bytes.every(b=>b<128)?text:bytes;
+}
+
+return {NATIVE_ENCODINGS,bytesOf,equalBytes,linesOf,lineBody,lineEnding,preferredEOL,unquote,quote,commentAt,replaceLineValue,decodeNativeBytes,decodeNativeText,encodeNativeText};
+})();
+
+/* ../project/frx.js */
+__modules[9]=(()=>{
+const {VBError}=__modules[2];
+const {decodeNativeBytes,encodeNativeText,bytesOf}=__modules[8];
 /** Bounded FRX records; no COM deserialization, native code, or remote resource loads. */
 
 
 const MAX_RESOURCE_BYTES=20*1024*1024;
 const fail=message=>{throw new VBError('FRX: '+message,1002);};
 function cleanProjectPath(path){
-  path=String(path).replace(/\\/g,'/');if(!path||/^[\/]|^[a-z]:|\0/i.test(path))fail('unsafe project path: '+path);
+  path=String(path).replace(/\\/g,'/');if(!path||path.length>4096||/^[\/]|:|[\x00-\x1f]/i.test(path))fail('unsafe project path: '+path);
   const out=[];for(const part of path.split('/')){if(!part||part==='.')continue;if(part==='..'){if(!out.length)fail('path escapes project root: '+path);out.pop();}else out.push(part);}if(!out.length)fail('empty project path');return out.join('/');
 }
 function relativeProjectPath(fromFile,toFile){const a=cleanProjectPath(fromFile).split('/');a.pop();const b=cleanProjectPath(toFile).split('/');while(a.length&&b.length&&a[0].toLowerCase()===b[0].toLowerCase()){a.shift();b.shift();}return [...a.map(()=> '..'),...b].join('\\');}
@@ -582,11 +659,11 @@ function view(bytes){return new DataView(bytes.buffer,bytes.byteOffset,bytes.byt
 function range(bytes,offset,length){if(!Number.isInteger(offset)||!Number.isInteger(length)||offset<0||length<0||offset+length>bytes.length)fail('truncated record or out-of-range offset');}
 function resourceOffset(value){if(typeof value==='number'){if(Number.isInteger(value)&&value>=0)return value;}else if(/^[0-9a-f]{1,8}$/i.test(value||''))return parseInt(value,16);fail('invalid hexadecimal resource offset');}
 /** Decode only the record identified by the property; never guess by scanning untrusted bytes. */
-function readFRXRecord(input,offset,property='Text'){
+function readFRXRecord(input,offset,property='Text',{encoding='windows-1252'}={}){
   const bytes=input instanceof Uint8Array?input:new Uint8Array(input);if(bytes.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');offset=resourceOffset(offset);range(bytes,offset,1);const v=view(bytes),remaining=bytes.length-offset;
   if(property==='List'){
     range(bytes,offset,4);const count=v.getUint16(offset,true),signature=v.getUint16(offset+2,true);if(![3,7].includes(signature))fail('unsupported list signature');let cursor=offset+4;const items=[];
-    for(let i=0;i<count;i++){range(bytes,cursor,2);const size=v.getUint16(cursor,true);cursor+=2;range(bytes,cursor,size);items.push(decodeANSI(bytes.subarray(cursor,cursor+size)));cursor+=size;}return {kind:'list',items,signature,bytesRead:cursor-offset};
+    for(let i=0;i<count;i++){range(bytes,cursor,2);const size=v.getUint16(cursor,true);cursor+=2;range(bytes,cursor,size);items.push(decodeNativeBytes(bytes.subarray(cursor,cursor+size),encoding));cursor+=size;}return {kind:'list',items,signature,bytesRead:cursor-offset};
   }
   if(remaining>=12&&v.getUint32(offset+4,true)===0x746c){const size=v.getUint32(offset,true),payload=v.getUint32(offset+8,true);if(size!==payload+8)fail('inconsistent picture lengths');range(bytes,offset+12,payload);return {kind:'picture',bytes:bytes.slice(offset+12,offset+12+payload),bytesRead:12+payload};}
   let header=1,length=bytes[offset],kind='text8';
@@ -595,11 +672,11 @@ function readFRXRecord(input,offset,property='Text'){
   else if(remaining>=4&&bytes.subarray(offset,offset+4).includes(0)){header=4;length=v.getUint32(offset,true);kind='text32';}
   range(bytes,offset+header,length);return {kind,bytes:bytes.slice(offset+header,offset+header+length),bytesRead:header+length};
 }
-function writeFRXRecord(value,kind='text32',{signature=3}={}){
+function writeFRXRecord(value,kind='text32',{signature=3,encoding='windows-1252'}={}){
   if(kind==='list'){
-    if(!Array.isArray(value)||value.length>65535)fail('list must contain at most 65,535 items');const encoded=value.map(item=>encodeANSI(String(item)));for(const b of encoded)if(b.length>65535)fail('list item exceeds 65,535 bytes');const size=4+encoded.reduce((n,b)=>n+2+b.length,0);if(size>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const out=new Uint8Array(size),v=view(out);v.setUint16(0,value.length,true);v.setUint16(2,[3,7].includes(signature)?signature:3,true);let at=4;for(const b of encoded){v.setUint16(at,b.length,true);out.set(b,at+2);at+=2+b.length;}return out;
+    if(!Array.isArray(value)||value.length>65535)fail('list must contain at most 65,535 items');const encoded=value.map(item=>bytesOf(encodeNativeText(String(item),{encoding})));for(const b of encoded)if(b.length>65535)fail('list item exceeds 65,535 bytes');const size=4+encoded.reduce((n,b)=>n+2+b.length,0);if(size>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const out=new Uint8Array(size),v=view(out);v.setUint16(0,value.length,true);v.setUint16(2,[3,7].includes(signature)?signature:3,true);let at=4;for(const b of encoded){v.setUint16(at,b.length,true);out.set(b,at+2);at+=2+b.length;}return out;
   }
-  const bytes=kind==='picture'?new Uint8Array(value):encodeANSI(String(value));if(bytes.length>MAX_RESOURCE_BYTES-12)fail('resource exceeds 20 MiB limit');let header=kind==='picture'?12:kind==='text8'&&bytes.length<255?1:kind==='text16'&&bytes.length<=65535?3:4;const out=new Uint8Array(header+bytes.length),v=view(out);if(header===12){v.setUint32(0,bytes.length+8,true);v.setUint32(4,0x746c,true);v.setUint32(8,bytes.length,true);}else if(header===4)v.setUint32(0,bytes.length,true);else if(header===3){out[0]=255;v.setUint16(1,bytes.length,true);}else out[0]=bytes.length;out.set(bytes,header);return out;
+  const bytes=kind==='picture'?new Uint8Array(value):bytesOf(encodeNativeText(String(value),{encoding}));if(bytes.length>MAX_RESOURCE_BYTES-12)fail('resource exceeds 20 MiB limit');let header=kind==='picture'?12:kind==='text8'&&bytes.length<255?1:kind==='text16'&&bytes.length<=65535?3:4;const out=new Uint8Array(header+bytes.length),v=view(out);if(header===12){v.setUint32(0,bytes.length+8,true);v.setUint32(4,0x746c,true);v.setUint32(8,bytes.length,true);}else if(header===4)v.setUint32(0,bytes.length,true);else if(header===3){out[0]=255;v.setUint16(1,bytes.length,true);}else out[0]=bytes.length;out.set(bytes,header);return out;
 }
 function rasterDataURL(input){
   let bytes=input,mime='';const b=bytes,v=view(bytes),starts=hex=>hex.every((n,i)=>b[i]===n);
@@ -624,23 +701,23 @@ function hydrateResources(project,diagnostics=[]){
       const path=resolveProjectPath(paths,module.sourcePath||module.name+'.frm',reference.resource);
       if(!path)fail('missing resource file '+reference.resource);if(!cache.has(path))cache.set(path,fromBase64(project.assets[path].data));
       const lower=key.toLowerCase();if(!TEXT_PROPERTIES.has(lower)&&!['list','picture','icon','mouseicon'].includes(lower))fail('property '+key+' is retained as an opaque resource');
-      const record=readFRXRecord(cache.get(path),reference.offset,lower==='list'?'List':reference.text?'LongText':key);let value;
+      const record=readFRXRecord(cache.get(path),reference.offset,lower==='list'?'List':reference.text?'LongText':key,{encoding:module.resourceEncoding||'windows-1252'});let value;
       if(lower==='list')value=record.items;else if(['picture','icon','mouseicon'].includes(lower)){if(record.kind!=='picture')fail('picture header not supported');value=rasterDataURL(record.bytes);if(!value)fail('native/OLE/metafile picture retained; no raster browser decoder');}
-      else {if(record.kind==='picture')fail('text references a picture record');value=decodeANSI(record.bytes);}
-      node.resourceBindings ||= {};node.resourceBindings[key]={reference:{...reference},assetPath:path,kind:record.kind,signature:record.signature,originalValue:structuredClone(value)};node.properties[key]=value;
+      else {if(record.kind==='picture')fail('text references a picture record');value=decodeNativeBytes(record.bytes,module.resourceEncoding||'windows-1252');}
+      node.resourceBindings ||= {};node.resourceBindings[key]={reference:{...reference},assetPath:path,kind:record.kind,signature:record.signature,encoding:module.resourceEncoding||'windows-1252',originalValue:structuredClone(value)};node.properties[key]=value;
     }catch(error){diagnostics.push({severity:'warning',source:module.name,message:node.name+'.'+key+': '+error.message+' (original bytes and reference retained).'});}
   }}return project;
 }
 /** Native export is copy-on-write: original blobs never move; edited entries append. */
 function prepareResources(project){
-  const modules=structuredClone(project.modules),files={};for(const [path,asset]of Object.entries(project.assets||{})){cleanProjectPath(path);if(asset.encoding==='base64')files[path]=fromBase64(asset.data);}
+  const modules=structuredClone(project.modules),files=Object.create(null);for(const [path,asset]of Object.entries(project.assets||{})){cleanProjectPath(path);if(asset.encoding==='base64')files[path]=fromBase64(asset.data);}
   const append=(path,value,kind,options)=>{path=cleanProjectPath(path);const record=writeFRXRecord(value,kind,options),before=files[path]||new Uint8Array();if(before.length+record.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const all=new Uint8Array(before.length+record.length);all.set(before);all.set(record,before.length);files[path]=all;return before.length.toString(16).toUpperCase().padStart(4,'0');};
   for(const module of modules){if(!module.form)continue;const source=module.sourcePath||module.name+'.frm';for(const node of [module.form,...module.form.controls,...module.form.menus])for(const [key,value]of Object.entries(node.properties||{})){
-    if(value?.resource)continue;const binding=node.resourceBindings?.[key],same=binding&&JSON.stringify(value)===JSON.stringify(binding.originalValue);if(same){node.properties[key]=binding.reference;continue;}
+    if(value?.resource)continue;const binding=node.resourceBindings?.[key],same=binding&&JSON.stringify(value)===JSON.stringify(binding.originalValue);if(same){const reference={...binding.reference};let resolved;try{resolved=resolveProjectPath(Object.keys(files),source,reference.resource);}catch{}if(resolved?.toLowerCase()!==binding.assetPath.toLowerCase())reference.resource=relativeProjectPath(source,binding.assetPath);node.properties[key]=reference;continue;}
     const lower=key.toLowerCase(),picture=['picture','icon','mouseicon'].includes(lower),list=lower==='list'&&Array.isArray(value),text=TEXT_PROPERTIES.has(lower)&&typeof value==='string';
     if(!binding&&!list&&!(picture&&value)&&!(text&&(/[\r\n]/.test(value)||value.length>255)))continue;
     if(picture&&!value){delete node.properties[key];continue;}if(!list&&!picture&&!text)fail('cannot serialize edited opaque resource '+node.name+'.'+key);
-    const path=binding?.assetPath||source.replace(/\.frm$/i,'.frx'),kind=picture?'picture':list?'list':binding?.kind||'text32',offset=append(path,picture?rasterBytes(value):value,kind,{signature:binding?.signature});
+    const path=binding?.assetPath||source.replace(/\.(frm|ctl|pag|dob|dsr)$/i,(_,ext)=>'.'+({frm:'frx',ctl:'ctx',pag:'pgx',dob:'dox',dsr:'dsx'})[ext.toLowerCase()]),kind=picture?'picture':list?'list':'text32',offset=append(path,picture?rasterBytes(value):value,kind,{signature:binding?.signature,encoding:binding?.encoding||module.resourceEncoding||'windows-1252'});
     node.properties[key]={resource:relativeProjectPath(source,path),offset,...(text?{text:true}:{})};
   }}return {modules,files};
 }
@@ -649,9 +726,9 @@ return {MAX_RESOURCE_BYTES,cleanProjectPath,relativeProjectPath,resolveProjectPa
 })();
 
 /* ../project/res.js */
-__modules[8]=(()=>{
+__modules[10]=(()=>{
 const {VBError}=__modules[2];
-const {cleanProjectPath,fromBase64,toBase64,MAX_RESOURCE_BYTES}=__modules[7];
+const {cleanProjectPath,fromBase64,toBase64,MAX_RESOURCE_BYTES}=__modules[9];
 /** Windows 32-bit .res containers. Payloads remain opaque unless explicitly edited. */
 
 
@@ -743,11 +820,11 @@ return {RESOURCE_TYPES,resourceKey,normalizeResources,readRES,writeRES,decodeStr
 })();
 
 /* resources.js */
-__modules[9]=(()=>{
+__modules[11]=(()=>{
 const {VBError}=__modules[2];
 const {VBArray,bankersRound,numeric}=__modules[5];
-const {normalizeResources,decodeStringTable}=__modules[8];
-const {fromBase64,rasterDataURL,toBase64,MAX_RESOURCE_BYTES}=__modules[7];
+const {normalizeResources,decodeStringTable}=__modules[10];
+const {fromBase64,rasterDataURL,toBase64,MAX_RESOURCE_BYTES}=__modules[9];
 
 
 
@@ -778,7 +855,7 @@ return {ResourceStore};
 })();
 
 /* ../theme/theme.js */
-__modules[10]=(()=>{
+__modules[12]=(()=>{
 
 /** Theme data is shared by DOM controls, canvas/WebGPU drawing and the exporter.
  * Values are RGB, not OLE BGR. No proprietary font or artwork is embedded.
@@ -835,7 +912,7 @@ return {THEMES,SYSTEM_ROLES,SYSTEM_COLOR_NAMES,themeId,getTheme,applyTheme,color
 })();
 
 /* signatures.js */
-__modules[11]=(()=>{
+__modules[13]=(()=>{
 
 /** Public names for named-argument binding. A trailing ? denotes Optional. */
 const BUILTIN_SIGNATURES={
@@ -855,7 +932,7 @@ return {BUILTIN_SIGNATURES,signatureParameters};
 })();
 
 /* ../data/recordset.js */
-__modules[12]=(()=>{
+__modules[14]=(()=>{
 const {VBError}=__modules[2];
 const {VBArray,VBCurrency,coerce,bankersRound,numeric,binary,truth}=__modules[5];
 
@@ -966,11 +1043,11 @@ return {DisconnectedRecordset};
 })();
 
 /* library.js */
-__modules[13]=(()=>{
-const {ResourceStore}=__modules[9];
+__modules[15]=(()=>{
+const {ResourceStore}=__modules[11];
 const {asDate,dateAdd,dateDiff,datePart,dateSerial,timeSerial,weekday,weekdayName,monthName}=__modules[1];
-const {BUILTIN_SIGNATURES,signatureParameters}=__modules[11];
-const {DisconnectedRecordset}=__modules[12];
+const {BUILTIN_SIGNATURES,signatureParameters}=__modules[13];
+const {DisconnectedRecordset}=__modules[14];
 const {recordLength}=__modules[6];
 const { VBError }=__modules[2];
 const { lower }=__modules[4];
@@ -1067,7 +1144,7 @@ return {VB_CONSTANTS,MemoryRecordset,createLibrary};
 })();
 
 /* ../controls/rtf.js */
-__modules[14]=(()=>{
+__modules[16]=(()=>{
 const {VBError}=__modules[2];
 const {decodeANSI}=__modules[6];
 /** An original bounded RTF reader/writer and UTF-16 rich-text run model.
@@ -1178,7 +1255,7 @@ return {RTF_LIMITS,RICH_DEFAULTS,richText,parseRTF,writeRTF,RichTextDocument};
 })();
 
 /* mdi.js */
-__modules[15]=(()=>{
+__modules[17]=(()=>{
 const {VBError}=__modules[2];
 const {el}=__modules[4];
 const {NOTHING}=__modules[5];
@@ -1238,7 +1315,7 @@ return {arrangeMDIRects,RuntimeMDI};
 })();
 
 /* ../theme/icon-art.js */
-__modules[16]=(()=>{
+__modules[18]=(()=>{
 
 /** Authored classic IDE pixel artwork, not extracted Microsoft resources.
  * Every cell is one native 16px pixel. Keep semantic variants separate: a size,
@@ -1396,8 +1473,8 @@ return {ICON_PALETTE,ICON_ART,CONTROL_ART};
 })();
 
 /* ../theme/icons.js */
-__modules[17]=(()=>{
-const {ICON_ART,CONTROL_ART,ICON_PALETTE}=__modules[16];
+__modules[19]=(()=>{
+const {ICON_ART,CONTROL_ART,ICON_PALETTE}=__modules[18];
 /** Offline, font-independent classic glyph renderer, shared by IDE and runtime. */
 
 const ICON_NAMES=Object.freeze(Object.keys(ICON_ART));
@@ -1424,9 +1501,9 @@ return {ICON_NAMES,CONTROL_ICON_TYPES,hasIcon,hasControlIcon,iconSVG,icon,contro
 })();
 
 /* ../controls/dialog.js */
-__modules[18]=(()=>{
+__modules[20]=(()=>{
 const {el}=__modules[4];
-const {icon}=__modules[17];
+const {icon}=__modules[19];
 
 
 /** The supported MsgBox style bits. Help/system-modal options remain host limitations. */
@@ -1461,7 +1538,7 @@ return {messageBoxOptions,runtimeDialog};
 })();
 
 /* ../language/default-types.js */
-__modules[19]=(()=>{
+__modules[21]=(()=>{
 const {VBError}=__modules[2];
 
 /** VB6 module-scoped default types. Later VB.NET-only integer types are not accepted. */
@@ -1488,7 +1565,7 @@ return {DEFAULT_TYPE_NAMES,addDefaultTypes,defaultIdentifierType};
 })();
 
 /* ../language/interfaces.js */
-__modules[20]=(()=>{
+__modules[22]=(()=>{
 const {lower}=__modules[4];
 
 const json=x=>JSON.stringify(x);
@@ -1532,7 +1609,7 @@ return {validateInterfaces};
 })();
 
 /* ../language/expression.js */
-__modules[21]=(()=>{
+__modules[23]=(()=>{
 const { tokenize, VBError }=__modules[2];
 
 const PRECEDENCE = {imp:1,eqv:2,xor:3,or:4,and:5,'=':7,'<>':7,'<':7,'>':7,'<=':7,'>=':7,is:7,like:7,'&':8,'+':9,'-':9,mod:10,'\\':11,'*':12,'/':12,'^':14};
@@ -1608,9 +1685,9 @@ return {ExpressionParser,parseExpression,parseCall};
 })();
 
 /* ../language/conditional.js */
-__modules[22]=(()=>{
+__modules[24]=(()=>{
 const { VBError }=__modules[2];
-const { parseExpression }=__modules[21];
+const { parseExpression }=__modules[23];
 const { binary, unary, truth }=__modules[5];
 
 
@@ -1650,12 +1727,12 @@ return {preprocess};
 })();
 
 /* ../language/compiler.js */
-__modules[23]=(()=>{
-const {defaultIdentifierType,addDefaultTypes}=__modules[19];
-const {validateInterfaces}=__modules[20];
-const { preprocess }=__modules[22];
+__modules[25]=(()=>{
+const {defaultIdentifierType,addDefaultTypes}=__modules[21];
+const {validateInterfaces}=__modules[22];
+const { preprocess }=__modules[24];
 const { VBError, logicalLines, splitTop, tokenize }=__modules[2];
-const { parseExpression, parseCall }=__modules[21];
+const { parseExpression, parseCall }=__modules[23];
 const { lower }=__modules[4];
 
 
@@ -1845,7 +1922,7 @@ return {parseDeclarations,parseParameters,compileModule,compileProject,validateC
 })();
 
 /* debug-evaluation.js */
-__modules[24]=(()=>{
+__modules[26]=(()=>{
 const {VBError}=__modules[2];
 
 /** Not a VB exception: Resume Next must not defeat user cancellation. */
@@ -1874,9 +1951,9 @@ return {DebugEvaluationAbort,DebugEvaluationSession};
 })();
 
 /* debug-inspector.js */
-__modules[25]=(()=>{
+__modules[27]=(()=>{
 const {VBError}=__modules[2];
-const {parseExpression}=__modules[21];
+const {parseExpression}=__modules[23];
 const {lower}=__modules[4];
 const {Cell,LazyCell,Ref,VBArray,VBCollection,VBDictionary,VBCurrency,VBErrorValue,NOTHING,MISSING,objectSupports,unary,binary,coerce,truth}=__modules[5];
 
@@ -1928,7 +2005,7 @@ return {debugDescription,DebugInspector};
 })();
 
 /* instruction-map.js */
-__modules[26]=(()=>{
+__modules[28]=(()=>{
 const {VBError}=__modules[2];
 
 const key=ins=>{const {line,source,procedure,...rest}=ins;return JSON.stringify(rest);};
@@ -1954,8 +2031,8 @@ return {linearInstruction,instructionMap};
 })();
 
 /* live-edit.js */
-__modules[27]=(()=>{
-const {instructionMap,linearInstruction}=__modules[26];
+__modules[29]=(()=>{
+const {instructionMap,linearInstruction}=__modules[28];
 const {VBError}=__modules[2];
 
 
@@ -2015,7 +2092,7 @@ return {sameActiveLayout,planLiveEdit,nextStatementIndex};
 })();
 
 /* filesystem.js */
-__modules[28]=(()=>{
+__modules[30]=(()=>{
 const { VBError }=__modules[2];
 const {encodeANSI,decodeANSI}=__modules[6];
 
@@ -2081,19 +2158,19 @@ return {VirtualFileSystem};
 })();
 
 /* vm.js */
-__modules[29]=(()=>{
-const {DebugEvaluationSession}=__modules[24];
-const {defaultIdentifierType}=__modules[19];
-const {DebugInspector}=__modules[25];
-const {planLiveEdit,nextStatementIndex}=__modules[27];
+__modules[31]=(()=>{
+const {DebugEvaluationSession}=__modules[26];
+const {defaultIdentifierType}=__modules[21];
+const {DebugInspector}=__modules[27];
+const {planLiveEdit,nextStatementIndex}=__modules[29];
 const {encodeVariable,decodeVariable,makeRecord}=__modules[6];
 const { Signal, lower, VERSION }=__modules[4];
 const { VBError }=__modules[2];
-const { parseExpression, parseCall }=__modules[21];
-const { compileProject }=__modules[23];
+const { parseExpression, parseCall }=__modules[23];
+const { compileProject }=__modules[25];
 const { NOTHING, MISSING, objectIdentity, objectSupports, VBErrorValue, LazyCell, Cell, Ref, VBArray, VBCollection, VBDictionary, VBCurrency, cloneValue, coerce, defaultValue, numeric, truth, vbString, unary, binary, describe }=__modules[5];
-const { VirtualFileSystem }=__modules[28];
-const { createLibrary, MemoryRecordset }=__modules[13];
+const { VirtualFileSystem }=__modules[30];
+const { createLibrary, MemoryRecordset }=__modules[15];
 
 
 
@@ -2564,7 +2641,7 @@ return {VBInstance,VirtualMachine};
 })();
 
 /* ../controls/form-window.js */
-__modules[30]=(()=>{
+__modules[32]=(()=>{
 const {el}=__modules[4];
 
 /** Pointer-capture lifecycle shared by runtime form moving and resizing. */
@@ -2590,9 +2667,9 @@ return {installFormWindow};
 })();
 
 /* ../controls/native-widgets.js */
-__modules[31]=(()=>{
+__modules[33]=(()=>{
 const {el}=__modules[4];
-const {getTheme}=__modules[10];
+const {getTheme}=__modules[12];
 
 
 /** Bounds-only model used by the classic two-button spin control. */
@@ -2665,7 +2742,7 @@ return {stepperValue,ClassicUpDown,ClassicCombo};
 })();
 
 /* ../controls/scrollbar.js */
-__modules[32]=(()=>{
+__modules[34]=(()=>{
 const {el}=__modules[4];
 
 /** Scroll-bar geometry is independent from DOM and remains stable at fractional DPR. */
@@ -2706,11 +2783,11 @@ return {scrollbarGeometry,ClassicScrollbar};
 })();
 
 /* ../theme/menu.js */
-__modules[33]=(()=>{
+__modules[35]=(()=>{
 const {uiDocument}=__modules[3];
 const {el}=__modules[4];
-const {icon}=__modules[17];
-const {getTheme}=__modules[10];
+const {icon}=__modules[19];
+const {getTheme}=__modules[12];
 /** Shared IDE/runtime popup menus: one session, a retained submenu stack, no leaked listeners. */
 
 
@@ -2795,8 +2872,8 @@ return {mnemonicText,menuIsOpen,closeMenu,showMenu};
 })();
 
 /* ../graphics/surface.js */
-__modules[34]=(()=>{
-const { colorValue, getTheme }=__modules[10];
+__modules[36]=(()=>{
+const { colorValue, getTheme }=__modules[12];
 
 /** Demand-rendered 2D primitives: WebGPU triangles, Canvas2D fallback, DOM text. */
 const surfaces = new WeakMap();
@@ -2846,10 +2923,10 @@ return {refreshGraphicsSurfaces,oleColor,getGPUDevice,GraphicsSurface};
 })();
 
 /* ../controls/richtext.js */
-__modules[35]=(()=>{
-const {parseRTF,RichTextDocument,richText}=__modules[14];
+__modules[37]=(()=>{
+const {parseRTF,RichTextDocument,richText}=__modules[16];
 const {VBError}=__modules[2];
-const {oleColor}=__modules[34];
+const {oleColor}=__modules[36];
 /** RichTextBox DOM adapter. All content is constructed as text nodes, never innerHTML. */
 
 
@@ -2937,9 +3014,9 @@ return {RichTextController,RICH_SELECTION_PROPERTIES};
 })();
 
 /* ../project/model.js */
-__modules[36]=(()=>{
+__modules[38]=(()=>{
 const { clone, lower, safeName }=__modules[4];
-const {normalizeResources}=__modules[8];
+const {normalizeResources}=__modules[10];
 const { VBError }=__modules[2];
 
 
@@ -2974,16 +3051,16 @@ function validateForm(form,moduleName){
     if(items.some(item=>item.properties.Index===undefined||c.properties.Index===undefined||item.properties.Index===c.properties.Index||item.type!==c.type))throw new VBError('Duplicate or incompatible control array name/index: '+c.name,1002);
     items.push(c);controls.set(key,items);allNames.add(key);
   }
-  for(const m of form.menus){validateNode(m);const key=lower(m.name);if(allNames.has(key))throw new VBError('Duplicate menu or control name: '+m.name,1002);allNames.add(key);menus.set(key,m);}
-  for(const [nodes,lookup]of [[form.controls,controls],[form.menus,menus]])for(const node of nodes){const seen=new Set([lower(node.name)]);let current=node;
-    while(current.parent){const key=lower(current.parent);if(seen.has(key))throw new VBError('Cyclic parent relationship: '+node.name,1002);seen.add(key);const result=lookup.get(key);if(!result)throw new VBError('Missing parent '+current.parent+' for '+node.name,1002);const parent=Array.isArray(result)?result[0]:result;current.parent=parent.name;current=parent;}
+  for(const m of form.menus){validateNode(m);const key=lower(m.name),items=menus.get(key)||[];if(controls.has(key))throw new VBError('Duplicate menu or control name: '+m.name,1002);if(m.properties.Index!==undefined){const index=Number(m.properties.Index);if(!Number.isInteger(index)||index<0||index>32767)throw new VBError('Invalid menu array index: '+m.name,380);m.properties.Index=index;}if(items.some(item=>item.properties.Index===undefined||m.properties.Index===undefined||item.properties.Index===m.properties.Index))throw new VBError('Duplicate menu or control name/index: '+m.name,1002);items.push(m);menus.set(key,items);allNames.add(key);}
+  for(const [nodes,lookup]of [[form.controls,controls],[form.menus,menus]])for(const node of nodes){const seen=new Set([node.id]);let current=node;
+    while(current.parent){const key=lower(current.parent);const result=lookup.get(key);if(!result)throw new VBError('Missing parent '+current.parent+' for '+node.name,1002);const parent=Array.isArray(result)?result.find(p=>p.id===current.nativeParentId)||result[0]:result;if(seen.has(parent.id))throw new VBError('Cyclic parent relationship: '+node.name,1002);seen.add(parent.id);current.parent=parent.name;current=parent;}
   }
 }
 function normalizeProject(value){
   if(!value||typeof value!=='object'||!Array.isArray(value.modules))throw new VBError('Not a VB6 Studio project',1002);
   if(value.schema!==PROJECT_SCHEMA)throw new VBError('Unsupported project schema: '+value.schema,1002);
-  if(!value.modules.length||value.modules.length>1000)throw new VBError('Project must contain 1–1,000 modules',7);
-  const project=clone(value);project.id ||= newId();project.name=safeName(project.name);project.settings={...newProject().settings,...project.settings};project.references ||= [];project.assets ||= {};project.vfs ||= {files:{}};project.appSettings ||= {};
+  if(!value.modules.length&&!value.nativeProject||value.modules.length>1000)throw new VBError('Project must contain 1–1,000 modules',7);
+  const project=clone(value);project.id ||= newId();project.name=project.nativeProject?.document?String(project.name).slice(0,100):safeName(project.name);project.settings={...newProject().settings,...project.settings};project.references ||= [];project.assets ||= {};project.vfs ||= {files:{}};project.appSettings ||= {};
   const names=new Set(),ids=new Set();for(const m of project.modules){
     if(!m||typeof m.name!=='string'||!/^[A-Za-z_]\w*$/.test(m.name))throw new VBError('Invalid module name: '+m?.name,1002);
     if(names.has(lower(m.name)))throw new VBError('Duplicate module: '+m.name,1002);names.add(lower(m.name));
@@ -3005,7 +3082,7 @@ return {PROJECT_SCHEMA,newId,BASIC_CONTROL_TYPES,EXTENDED_CONTROL_TYPES,CONTROL_
 })();
 
 /* ../controls/collections.js */
-__modules[37]=(()=>{
+__modules[39]=(()=>{
 const { VBError }=__modules[2];
 const { lower }=__modules[4];
 
@@ -3053,22 +3130,22 @@ return {ControlCollection,TreeNodes,ListItems,ColumnHeaders,ToolbarButtons,Statu
 })();
 
 /* ../controls/controls.js */
-__modules[38]=(()=>{
-const {installFormWindow}=__modules[30];
-const {ClassicCombo,ClassicUpDown}=__modules[31];
-const {ClassicScrollbar}=__modules[32];
-const {showMenu : openClassicMenu,closeMenu,menuIsOpen}=__modules[33];
-const {RichTextController,RICH_SELECTION_PROPERTIES}=__modules[35];
-const {parseRTF}=__modules[14];
+__modules[40]=(()=>{
+const {installFormWindow}=__modules[32];
+const {ClassicCombo,ClassicUpDown}=__modules[33];
+const {ClassicScrollbar}=__modules[34];
+const {showMenu : openClassicMenu,closeMenu,menuIsOpen}=__modules[35];
+const {RichTextController,RICH_SELECTION_PROPERTIES}=__modules[37];
+const {parseRTF}=__modules[16];
 const { el, lower, clone }=__modules[4];
 const { VBError }=__modules[2];
 const { NOTHING, Ref, Cell, truth, VBArray, vbString }=__modules[5];
-const { MemoryRecordset }=__modules[13];
-const { GraphicsSurface }=__modules[34];
-const { cssColor : oleColor, fontFamily, getTheme }=__modules[10];
-const { icon, controlIcon }=__modules[17];
-const { CONTROL_DEFAULTS, createControl, newId }=__modules[36];
-const { ControlCollection, TreeNodes, ListItems, ColumnHeaders, ToolbarButtons, StatusPanels, TabItems, ImageItems, ControlArray }=__modules[37];
+const { MemoryRecordset }=__modules[15];
+const { GraphicsSurface }=__modules[36];
+const { cssColor : oleColor, fontFamily, getTheme }=__modules[12];
+const { icon, controlIcon }=__modules[19];
+const { CONTROL_DEFAULTS, createControl, newId }=__modules[38];
+const { ControlCollection, TreeNodes, ListItems, ColumnHeaders, ToolbarButtons, StatusPanels, TabItems, ImageItems, ControlArray }=__modules[39];
 
 
 
@@ -3381,18 +3458,18 @@ return {NONVISUAL_TYPES,DEFAULT_EVENTS,CONTROL_EVENTS,BrowserControl,BrowserForm
 })();
 
 /* host.js */
-__modules[39]=(()=>{
-const {RuntimeMDI}=__modules[15];
-const {runtimeDialog,messageBoxOptions}=__modules[18];
-const { applyTheme, themeId }=__modules[10];
-const { icon }=__modules[17];
-const {rasterDataURL}=__modules[7];
+__modules[41]=(()=>{
+const {RuntimeMDI}=__modules[17];
+const {runtimeDialog,messageBoxOptions}=__modules[20];
+const { applyTheme, themeId }=__modules[12];
+const { icon }=__modules[19];
+const {rasterDataURL}=__modules[9];
 const { el, download, lower, clone }=__modules[4];
-const { compileProject }=__modules[23];
-const { VirtualMachine }=__modules[29];
-const { VirtualFileSystem }=__modules[28];
+const { compileProject }=__modules[25];
+const { VirtualMachine }=__modules[31];
+const { VirtualFileSystem }=__modules[30];
 const { describe }=__modules[5];
-const { BrowserForm }=__modules[38];
+const { BrowserForm }=__modules[40];
 
 
 
@@ -3439,21 +3516,21 @@ return {ApplicationHost};
 })();
 
 /* entry.js */
-__modules[40]=(()=>{
-const {ResourceStore}=__modules[9];
-const {readRES,writeRES,setResource,setResourceString}=__modules[8];
-const {THEMES,applyTheme,colorValue}=__modules[10];
-const {MemoryRecordset}=__modules[13];
-const {RichTextDocument,parseRTF,writeRTF}=__modules[14];
-const { ApplicationHost }=__modules[39];
-const { VirtualMachine }=__modules[29];
-const { compileProject, compileModule }=__modules[23];
-const { parseExpression }=__modules[21];
+__modules[42]=(()=>{
+const {ResourceStore}=__modules[11];
+const {readRES,writeRES,setResource,setResourceString}=__modules[10];
+const {THEMES,applyTheme,colorValue}=__modules[12];
+const {MemoryRecordset}=__modules[15];
+const {RichTextDocument,parseRTF,writeRTF}=__modules[16];
+const { ApplicationHost }=__modules[41];
+const { VirtualMachine }=__modules[31];
+const { compileProject, compileModule }=__modules[25];
+const { parseExpression }=__modules[23];
 const { NOTHING, MISSING, VBErrorValue, Cell, Ref, VBArray, VBCollection, VBDictionary, VBCurrency }=__modules[5];
 const {asDate,dateAdd,dateDiff,datePart,dateSerial,timeSerial,dateToSerial,serialToDate}=__modules[1];
-const { VirtualFileSystem }=__modules[28];
-const { BrowserControl, BrowserForm }=__modules[38];
-const { GraphicsSurface }=__modules[34];
+const { VirtualFileSystem }=__modules[30];
+const { BrowserControl, BrowserForm }=__modules[40];
+const { GraphicsSurface }=__modules[36];
 
 
 
@@ -3473,5 +3550,5 @@ const RuntimeAPI={ResourceStore,readRES,writeRES,setResource,setResourceString,T
 
 return {mountApplication,RuntimeAPI};
 })();
-globalThis["VB6Runtime"]=__modules[40];
+globalThis["VB6Runtime"]=__modules[42];
 })();
