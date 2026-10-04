@@ -1,0 +1,466 @@
+import {DebugEvaluationSession} from './debug-evaluation.js';
+import {defaultIdentifierType} from '../language/default-types.js';
+import {DebugInspector} from './debug-inspector.js';
+import {planLiveEdit,nextStatementIndex} from './live-edit.js';
+import {encodeVariable,decodeVariable,makeRecord} from './binary-codec.js';
+import { Signal, lower, VERSION } from '../core/core.js';
+import { VBError } from '../language/lexer.js';
+import { parseExpression, parseCall } from '../language/expression.js';
+import { compileProject } from '../language/compiler.js';
+import { NOTHING, MISSING, objectIdentity, objectSupports, VBErrorValue, LazyCell, Cell, Ref, VBArray, VBCollection, VBDictionary, VBCurrency, cloneValue, coerce, defaultValue, numeric, truth, vbString, unary, binary, describe } from './values.js';
+import { VirtualFileSystem } from './filesystem.js';
+import { createLibrary, MemoryRecordset } from './library.js';
+
+const BLOCKED_MEMBERS=new Set(['constructor','__proto__','prototype','caller','callee','arguments','__definegetter__','__definesetter__','__lookupgetter__','__lookupsetter__']);
+class StopExecution extends Error {}
+export class VBInstance {
+  constructor(module){this.staticCells=new Map();this.__vbInstance=true;this.__type=module.name;this.module=module;this.fields=new Map();this.formObject=null;this.loaded=false;this.initialized=false;}
+}
+export class VirtualMachine extends Signal {
+  constructor(program,host={},options={}) {
+    super();this.program=program.modules instanceof Map?program:compileProject(program);this.host=host;this.options={instructionLimit:5000000,sliceMilliseconds:8,maxCallDepth:256,...options};
+    this.fs=host.fs||new VirtualFileSystem();this.settings=host.settings||{};this.instances=new Map();this.formInstances=new Set();this.stack=[];this.library=createLibrary(this);this.state='ready';this.instructionCount=0;this.lastYield=0;this.breakpoints=new Map();this.stepMode=null;this.pauseRequested=false;this.pauseResolver=null;this.currentFrame=null;this.eventQueue=[];this.processing=false;this.staticCells=new Map();this.eventSinks=new WeakMap();this.lastError=null;
+    const vm=this;this.err={Number:0,Description:'',Source:'',HelpFile:'',HelpContext:0,LastDLLError:0,Clear(){this.Number=0;this.Description='';this.Source='';},Raise(number,source='',description=''){throw new VBError(description||`Application-defined or object-defined error (${number})`,Number(number),source);}};
+    this.library.set('err',this.err);this.library.set('app',{Title:this.program.name,EXEName:this.program.name,Path:'/',Major:Number(VERSION.split('.')[0]),Minor:Number(VERSION.split('.')[1]),Revision:Number(VERSION.split('.')[2]),PrevInstance:0,TaskVisible:-1});
+    this.library.set('screen',{TwipsPerPixelX:15,TwipsPerPixelY:15,Width:14400,Height:10800,MousePointer:0,ActiveForm:null});
+    this.library.set('forms',{get Count(){return [...vm.formInstances].filter(i=>i.loaded).length;},Item(key){const forms=[...vm.formInstances].filter(i=>i.loaded),item=typeof key==='number'?forms[key]:forms.find(i=>lower(i.module.name)===lower(key));if(!item)throw new VBError('Form not found in Forms collection',9);return item;},[Symbol.iterator](){return [...vm.formInstances].filter(i=>i.loaded).values();}});
+    this.library.set('debug',{Print:(...a)=>this.output(a.map(v=>v===null?'Null':v===undefined?'':v instanceof VBErrorValue?v.toString():vbString(v)).join(' '))});
+    this.debugInspector=new DebugInspector(this);this.debugPauseId=0;this.watchpoints=[];this.watchpointValues=new Map();this.runTarget=null;
+    this.library.set('clipboard',{SetText:async text=>{this.clipboard=vbString(text);await this.host.clipboardWrite?.(this.clipboard);},GetText:()=>this.clipboard||'',Clear:()=>{this.clipboard='';}});
+  }
+  output(text,newline=true){this.emit('output',{text:String(text),newline});this.host.print?.(String(text),newline);}
+  setState(state){this.state=state;this.emit('state',state);}
+  setBreakpoint(module,line,condition=''){const key=lower(module)+':'+line;this.breakpoints.set(key,{module,line,condition});this.emit('breakpoints',[...this.breakpoints.values()]);}
+  removeBreakpoint(module,line){this.breakpoints.delete(lower(module)+':'+line);this.emit('breakpoints',[...this.breakpoints.values()]);}
+  toggleBreakpoint(module,line){const key=lower(module)+':'+line;if(this.breakpoints.has(key))this.removeBreakpoint(module,line);else this.setBreakpoint(module,line);}
+  async initialize() {
+    if(!this.program.valid)throw new VBError(this.program.diagnostics.map(d=>`${d.source}:${d.line}: ${d.message}`).join('\n'),1002);
+    for(const module of this.program.modules.values())if(module.kind!=='class')this.instances.set(lower(module.name),new VBInstance(module));
+    for(const instance of this.instances.values()){
+      if(instance.module.form)await this.attachForm(instance);
+    }
+    for(const instance of this.instances.values())await this.initializeFields(instance);
+  }
+  makeFrame(instance,proc={name:'(Declarations)',params:[],returnType:'Variant',code:[]}){return {instance,module:instance.module,proc,locals:new Map(),pc:0,temps:new Map(),withStack:[],gosubStack:[],errorMode:'off',errorTarget:null,errorActive:false,errorPc:null,lastLine:null,lastPc:-1,result:new Cell(proc.returnType||'Variant'),depth:this.stack.length};}
+  async initializeFields(instance){const frame=this.makeFrame(instance);for(const decl of instance.module.declarations)await this.declare(decl,frame,instance.fields);instance.initialized=true;}
+  async declare(decl,frame,target=frame.locals,staticFlag=false) {
+    const key=lower(decl.name);if(target.has(key))return target.get(key);
+    const staticKey=lower(frame.proc.name)+':'+(frame.proc.accessor||'')+'.'+key,staticCells=frame.instance.staticCells;
+    if(staticFlag&&staticCells.has(staticKey)){target.set(key,staticCells.get(staticKey));return target.get(key);}
+    let value;
+    if(decl.bounds!==null&&decl.bounds!==undefined){const bounds=await this.evalBounds(decl.bounds,frame);value=await this.createArray(bounds,decl.type,frame,decl.fixedLength);value.dynamic=!bounds.length;}
+    else if(decl.autoNew){const cell=new LazyCell(decl.type,()=>this.createObject(decl.type,frame));cell.scope=decl.scope;target.set(key,cell);if(staticFlag)staticCells.set(staticKey,cell);return cell;}
+    else if(this.recordSchema(decl.type,frame.module))value=await this.createRecord(decl.type,frame);
+    else value=decl.initial?await this.evaluate(decl.initial,frame):this.program.modules.has(lower(decl.type))?NOTHING:defaultValue(decl.type);
+    const cell=new Cell(decl.bounds!==null&&decl.bounds!==undefined?'Variant':decl.type,value,decl.constant,decl.fixedLength);cell.scope=decl.scope;cell.isArray=decl.bounds!==null&&decl.bounds!==undefined;cell.elementType=decl.type;target.set(key,cell);if(decl.withEvents)this.bindEventCell(cell,frame.instance,decl.name);if(staticFlag)staticCells.set(staticKey,cell);return cell;
+  }
+  recordSchema(name,module){const local=Object.entries(module.types).find(([key])=>lower(key)===lower(name));if(local)return local[1];for(const candidate of this.program.modules.values()){const match=Object.entries(candidate.types).find(([key])=>lower(key)===lower(name));if(match)return match[1];}return null;}
+  async createArray(bounds,type,frame,fixedLength=null,depth=0){const record=this.recordSchema(type,frame.module)?await this.createRecord(type,frame,depth+1):null;return new VBArray(bounds,type,record?()=>cloneValue(record):null,fixedLength);}
+  async createRecord(name,frame,depth=0){if(depth>32)throw new VBError('Recursive user-defined type',1002);const fields=new Map();for(const member of this.recordSchema(name,frame.module)||[]){let value;if(member.bounds!==null){value=await this.createArray(await this.evalBounds(member.bounds,frame),member.type,frame,member.fixedLength,depth+1);value.dynamic=!member.bounds.length;}else if(this.recordSchema(member.type,frame.module))value=await this.createRecord(member.type,frame,depth+1);else value=member.initial?await this.evaluate(member.initial,frame):defaultValue(member.type);const cell=new Cell(member.bounds!==null?'Variant':member.type,value,false,member.fixedLength);cell.isArray=member.bounds!==null;cell.elementType=member.type;fields.set(member.name,cell);}return makeRecord(name,fields);}
+  // Event connections follow assignment order; replacing a reference detaches the old source.
+  bindEventCell(cell,owner,prefix){
+    const sink={owner,prefix},set=cell.set.bind(cell);let source=null;
+    const connect=value=>{if(source){const entries=this.eventSinks.get(source);if(entries){const i=entries.indexOf(sink);if(i>=0)entries.splice(i,1);}}source=value&&typeof value==='object'?value:null;if(source){let entries=this.eventSinks.get(source);if(!entries)this.eventSinks.set(source,entries=[]);entries.push(sink);}};
+    cell.set=value=>{const result=set(value);connect(result);return result;};connect(cell.get());
+  }
+  async raiseEvent(instance,name,nodes,frame){
+    const event=instance.module.events?.get(lower(name));if(!event)throw new VBError('Event not declared: '+name,1002);
+    if(nodes.length!==event.params.length)throw new VBError('Wrong number of arguments to event '+name,450);
+    const args=[];
+    for(let i=0;i<nodes.length;i++){const param=event.params[i],node=nodes[i];let ref;
+      if(param.byRef&&['id','member','call'].includes(node.kind)){try{ref=await this.reference(node,frame,true);}catch(error){if(!(error instanceof VBError))throw error;}}
+      if(param.byRef)args.push({ref:ref||new Cell(param.type,await this.evaluate(node,frame))});else args.push(coerce(await this.evaluate(node,frame),param.type));
+    }
+    for(const sink of [...(this.eventSinks.get(instance)||[])]){if(!(this.eventSinks.get(instance)||[]).includes(sink))continue;const proc=sink.owner.module.procedures.get(lower(sink.prefix+'_'+name));if(proc)await this.callProcedure(sink.owner,proc,args,frame);}
+    this.emit('event',{instance,name,args:args.map(a=>a?.ref?a.ref.get():a)});
+  }
+  async evalBounds(bounds,frame){const result=[];for(const [lo,hi]of bounds)result.push([lo?numeric(await this.evaluate(lo,frame)):frame.module.optionBase,numeric(await this.evaluate(hi,frame))]);return result;}
+  async start({breakOnEntry=false}={}) {
+    try { await this.initialize();this.setState('running');this.lastYield=performance.now();if(breakOnEntry)this.stepMode={mode:'into',depth:0};
+      for(const instance of this.instances.values()){const init=this.formProcedure(instance,'initialize');if(init)await this.callProcedure(instance,init,[]);}
+      const name=lower(this.program.startup||'');let instance=this.instances.get(name);
+      if(instance?.module.kind==='form'){await this.showForm(instance);return;}
+      if(name==='sub main'||name==='main'||!name){for(const i of this.instances.values()){const proc=i.module.procedures.get('main');if(proc){await this.callProcedure(i,proc,[]);return;}}}
+      instance ||= [...this.instances.values()].find(i=>i.module.kind==='form');if(instance)await this.showForm(instance);else throw new VBError('Startup Sub Main or startup form was not found',35);
+    }catch(error){if(error instanceof StopExecution)return;this.reportError(error);throw error;}
+  }
+  async attachForm(instance){if(this.host.createForm){instance.formObject=await this.host.createForm(structuredClone(instance.module.form),instance,this);for(const [name,control]of instance.formObject.controlMap||[])instance.fields.set(lower(name),new Cell('Object',control));this.formInstances.add(instance);}}
+  formProcedure(instance,event){return instance.module.procedures.get((instance.module.form?.type==='MDIForm'?'mdiform_':'form_')+event);}
+  async loadForm(instance){if(!instance?.__vbInstance||!instance.formObject)throw new VBError('Object does not support this property or method',438);if(!instance.loaded){instance.loaded=true;const load=this.formProcedure(instance,'load');if(load)await this.callProcedure(instance,load,[]);}}
+  async showForm(instance,modal=false){
+    if(modal&&(instance.module.form?.type==='MDIForm'||Number(instance.module.form?.properties?.MDIChild)))throw new VBError('MDI forms and child forms cannot be shown modally',401);
+    if(instance.formObject?.mdiChild){const parent=instance.formObject.mdiController.parent?.instance;if(!parent)throw new VBError('MDI child requires an MDI Form',366);if(!parent.formObject.shown&&!parent.showing)await this.showForm(parent);}
+    instance.showing=true;try{await this.loadForm(instance);}finally{instance.showing=false;}if(modal&&instance.formObject.shown)throw new VBError('Form already displayed; cannot show modally',400);
+    const previous=this.library.get('screen').ActiveForm;this.library.get('screen').ActiveForm=instance;instance.formObject.Show?.(modal);if(instance.module.form?.type==='MDIForm'&&instance.formObject.mdiController?.active?.shown)this.library.get('screen').ActiveForm=instance.formObject.mdiController.active.instance;const activate=this.formProcedure(instance,'activate');if(activate)await this.callProcedure(instance,activate,[]);
+    if(modal){const evaluation=this.debugEvaluation,finish=this.host.beginModal?.(instance.formObject);try{while(instance.formObject.shown&&this.state!=='stopped'&&this.state!=='error'){evaluation?.check();if(this.eventQueue.length)await this.runQueuedEvent(this.eventQueue.shift());else await new Promise(resolve=>setTimeout(resolve,8));}}finally{if(evaluation?.reason)instance.formObject.Hide?.();finish?.();this.library.get('screen').ActiveForm=previous;}}
+  }
+  async unloadForm(instance,mode=1){
+    if(!instance?.__vbInstance)throw new VBError('Object required',424);if(!instance.loaded)return true;
+    if(instance.unloading)return false;const children=instance.module.form?.type==='MDIForm'?[...this.formInstances].filter(i=>i.loaded&&Number(i.module.form?.properties?.MDIChild)):[],targets=[instance,...children];
+    targets.forEach(i=>i.unloading=true);
+    try{
+      for(const target of targets){const cancel=new Cell('Integer',0),query=this.formProcedure(target,'queryunload');if(query)await this.callProcedure(target,query,[{ref:cancel},target===instance?mode:4]);if(truth(cancel.get()))return false;}
+      for(const target of [...children,instance]){const cancel=new Cell('Integer',0),proc=this.formProcedure(target,'unload');if(proc)await this.callProcedure(target,proc,[{ref:cancel}]);if(truth(cancel.get()))return false;}
+      for(const target of [...children,instance]){target.formObject?.Hide?.();target.formObject?.suspendTimers?.();target.loaded=false;target.staticCells.clear();}return true;
+    }finally{targets.forEach(i=>i.unloading=false);}
+  }
+  requestUnload(instance){if(this.state==='stopped')return Promise.resolve();return new Promise(resolve=>{this.eventQueue.push({action:()=>this.unloadForm(instance,0),resolve,key:'unload:'+instance.module.name});this.processEvents();});}
+  async doEvents(){await new Promise(resolve=>setTimeout(resolve,0));for(let i=0;i<32&&this.eventQueue.length&&this.state==='running';i++)await this.runQueuedEvent(this.eventQueue.shift());return [...this.formInstances].filter(i=>i.loaded).length;}
+  async createObject(name,frame=this.currentFrame){const key=lower(name);if(key==='collection')return new VBCollection();if(key==='scripting.dictionary'||key==='dictionary')return new VBDictionary();if(key==='scripting.filesystemobject')return this.fs.fso();if(key==='adodb.recordset')return new MemoryRecordset();const module=this.program.modules.get(key);if(module){if(module.form?.type==='MDIForm')throw new VBError('An MDI Form cannot be created with New',360);const instance=new VBInstance(module);if(module.form)await this.attachForm(instance);await this.initializeFields(instance);const init=module.form?this.formProcedure(instance,'initialize'):module.procedures.get('class_initialize');if(init)await this.callProcedure(instance,init,[]);return instance;}throw new VBError(`ActiveX component cannot create object in browser runtime: ${name}`,429);}
+  async getIdentifier(name,frame,{noInvoke=false}={}) {
+    const key=lower(name);
+    if(key==='me')return frame.instance;
+    if(frame.locals.has(key))return frame.locals.get(key).get();
+    if(key===lower(frame.proc.name)&&['function','property'].includes(frame.proc.kind))return frame.result.get();
+    if(frame.instance.fields.has(key))return frame.instance.fields.get(key).get();
+    const localProc=frame.module.procedures.get(key);if(localProc)return {__procedure:localProc,instance:frame.instance};
+    const property=frame.module.procedures.get(key+':get');if(property)return await this.callProcedure(frame.instance,property,[]);
+    if(frame.instance.formObject&&this.hasMember(frame.instance.formObject,name))return this.nativeMember(frame.instance.formObject,name);
+    if(this.instances.has(key))return this.instances.get(key);
+    for(const instance of this.instances.values())if(instance.module.kind==='module'){
+      if(instance.fields.has(key)&&instance.fields.get(key).scope!=='private')return instance.fields.get(key).get();const proc=instance.module.procedures.get(key);if(proc&&proc.scope!=='private')return {__procedure:proc,instance};
+    }
+    const intrinsicKey=String(name).endsWith('$')&&this.library.has(key+'$')?key+'$':key;
+    if(this.library.has(intrinsicKey))return this.library.get(intrinsicKey);
+    if(frame.module.optionExplicit)throw new VBError(`Variable not defined: ${name}`,500);
+    const cell=new Cell(defaultIdentifierType(name,frame.module.defaultTypes));frame.locals.set(key,cell);return cell.get();
+  }
+  nativeKey(object,name){
+    if(object===NOTHING||object===null||object===undefined)throw new VBError('Object variable or With block variable not set',91);
+    const key=lower(name);if(BLOCKED_MEMBERS.has(key)||key.startsWith('_'))throw new VBError('Member access is not permitted',438);
+    if(typeof object==='function'||object?.nodeType||object?.window===object)throw new VBError('Browser host objects are not exposed to Visual Basic',438);
+    const isRecord=Object.getPrototypeOf(object)===Object.prototype&&!!object.__type;let obj=object,privateMatch=false;
+    for(let depth=0;obj&&depth<5;depth++,obj=Object.getPrototypeOf(obj)){
+      const candidates=Object.getOwnPropertyNames(obj).filter(k=>lower(k)===key&&!BLOCKED_MEMBERS.has(lower(k)));
+      const publicKey=candidates.find(k=>/^[A-Z]/.test(k)||isRecord);if(publicKey)return publicKey;
+      if(candidates.length)privateMatch=true;
+    }
+    if(privateMatch)throw new VBError('Implementation members are not exposed to Visual Basic: '+name,438);
+    return null;
+  }
+  hasMember(object,name){try{return this.nativeKey(object,name)!==null;}catch{return false;}}
+  nativeMember(object,name){const key=this.nativeKey(object,name);if(key===null)throw new VBError(`Object does not support property or method: ${name}`,438);const v=object[key];if(typeof v==='function')return {__native:v,receiver:object};return v;}
+  assertVisible(object,name,frame){
+    if(!object?.__vbInstance||frame?.module===object.module)return;
+    const key=lower(name),field=object.fields.get(key),members=[object.module.procedures.get(key),object.module.procedures.get(key+':get'),object.module.procedures.get(key+':let'),object.module.procedures.get(key+':set')].filter(Boolean);
+    if(field?.scope==='private'||members.length&&members.every(p=>p.scope==='private'))throw new VBError('Method or data member not found: '+name,438);
+  }
+  interfaceProcedure(object,name,accessor=null){
+    const binding=object.target.module.interfaceBindings?.[object.interfaceName],member=binding?.members[lower(name)+(accessor?':'+accessor:'')];
+    if(!member)throw new VBError('Member not found in '+object.interfaceName+': '+name,438);
+    return {__procedure:object.target.module.procedures.get(member.procedure),__signature:member.signature,instance:object.target};
+  }
+  async getMember(object,name,frame){
+    if(object?.__vbInterface){const members=object.target.module.interfaceBindings[object.interfaceName].members,key=lower(name);const value=this.interfaceProcedure(object,name,members[key]?null:'get');return value.__signature.kind==='property'&&!value.__signature.params.length?this.callProcedure(value.instance,value.__procedure,[],frame):value;}
+    this.assertVisible(object,name,frame);
+    if(object?.__vbInstance){const key=lower(name);if(object.fields.has(key))return object.fields.get(key).get();const proc=object.module.procedures.get(key);if(proc)return {__procedure:proc,instance:object};const property=object.module.procedures.get(key+':get');if(property){if(property.scope==='private'&&object.module!==frame?.module)throw new VBError('Property get is not accessible',438);return property.params.length?{__procedure:property,instance:object}:this.callProcedure(object,property,[]);}if(object.formObject){if(key==='show')return {__native:(modal=0)=>this.showForm(object,truth(modal)),receiver:this};if(key==='hide')return {__native:()=>object.formObject.Hide(),receiver:this};return this.nativeMember(object.formObject,name);}throw new VBError(`Method or data member not found: ${name}`,438);}
+    return this.nativeMember(object,name);
+  }
+  async defaultValue(value,depth=0){
+    if(depth>32)throw new VBError('Circular default-member evaluation',28);
+    if(value?.__control)return value.defaultValue();
+    const instance=objectIdentity(value),name=value?.__vbInterface?instance.module.interfaceBindings[value.interfaceName]?.defaultMember:instance?.module?.defaultMember;
+    if(instance?.__vbInstance&&name){const member=await this.getMember(value,name,this.currentFrame),result=member?.__procedure?await this.callProcedure(member.instance,member.__procedure,[],this.currentFrame):member;return this.defaultValue(result,depth+1);}
+    return value;
+  }
+  async evaluate(node,frame=this.currentFrame,{raw=false}={}) {
+    if(!frame){const instance=this.instances.values().next().value;if(!instance)throw new VBError('Runtime is not initialized',5);frame=this.makeFrame(instance);}
+    let value;
+    switch(node.kind){
+      case 'missing':return MISSING;case 'nothing':return NOTHING;case 'currency':return new VBCurrency(node.value);case 'literal':return node.value;case 'empty':return undefined;case 'date':return new Date(node.value);case 'group':return this.evaluate(node.expr,frame,{raw});
+      case 'id':value=await this.getIdentifier(node.name,frame);break;
+      case 'with':if(!frame.withStack.length)throw new VBError('Invalid or unqualified reference',1002);return frame.withStack.at(-1);
+      case 'member':value=await this.getMember(await this.evaluate(node.object,frame,{raw:true}),node.name,frame);break;
+      case 'new':return this.createObject(node.name,frame);
+      case 'typeof':{
+        const object=await this.evaluate(node.expr,frame,{raw:true}),type=lower(node.name).replace(/^vb\./,'');
+        if(object===NOTHING)return 0;
+        if(!object||typeof object!=='object'||object instanceof Date||object instanceof VBCurrency||object instanceof VBArray||object instanceof VBErrorValue||object.__fields||object===MISSING)throw new VBError('Object required',424);
+        if(type==='object')return -1;
+        if(objectSupports(object,type))return -1;
+        const actual=lower(object instanceof VBCollection?'Collection':object instanceof VBDictionary?'Dictionary':object.__type||object.model?.type||'');
+        return (actual===type||actual==='dictionary'&&type==='scripting.dictionary'||type==='form'&&!!object.module?.form||type==='control'&&!!object.__control)?-1:0;
+      }
+      case 'unary':if(node.op==='-'&&node.expr.kind==='currency')return new VBCurrency('-'+node.expr.value);return unary(node.op,await this.defaultValue(await this.evaluate(node.expr,frame)));
+      case 'binary':if(node.op==='is')return binary('is',await this.evaluate(node.left,frame,{raw:true}),await this.evaluate(node.right,frame,{raw:true}));return binary(node.op,await this.defaultValue(await this.evaluate(node.left,frame)),await this.defaultValue(await this.evaluate(node.right,frame)),frame.module.optionCompare);
+      case 'call':return this.callExpression(node,frame);
+      default:throw new VBError(`Invalid expression kind: ${node.kind}`,1002);
+    }
+    if(raw)return value;
+    if(value?.__procedure)return this.callProcedure(value.instance,value.__procedure,[],frame);
+    if(value?.__native)return this.debugAwait(value.__native.call(value.receiver));
+    if(typeof value==='function')return this.debugAwait(value());
+    return value;
+  }
+  argumentSlots(nodes,params,allowExtra=false){
+    const slots=[],used=new Set();let named=false,pos=0;
+    for(const node of nodes){let index;
+      if(node.kind==='named'){
+        named=true;if(!params)throw new VBError('Object does not support named arguments',446);
+        index=params.findIndex(p=>lower(p.name)===lower(node.name));
+        if(index<0)throw new VBError('Named argument not found: '+node.name,448);
+        if(params[index].paramArray)throw new VBError('ParamArray cannot be passed by name',446);
+      }else{if(named)throw new VBError('Positional argument cannot follow named argument',1002);index=pos++;}
+      if(used.has(index))throw new VBError('Argument already specified',450);used.add(index);
+      if(params&&index>=params.length&&!allowExtra)throw new VBError('Wrong number of arguments',450);
+      slots.push({index,node:node.kind==='named'?node.expr:node});
+    }
+    return slots;
+  }
+  async callExpression(node,frame){
+    let target=node.callee.kind==='id'&&lower(node.callee.name)===lower(frame.proc.name)?{__procedure:frame.proc,instance:frame.instance}:await this.evaluate(node.callee,frame,{raw:true});
+    const instance=objectIdentity(target),defaultName=target?.__vbInterface?instance.module.interfaceBindings[target.interfaceName]?.defaultMember:instance?.module?.defaultMember;
+    if(instance?.__vbInstance&&defaultName)target=await this.getMember(target,defaultName,frame);
+    const proc=target?.__procedure,signature=target?.__signature||proc,fn=target?.__native||(typeof target==='function'?target:null),params=signature?.params||fn?.vbParams;
+    const slots=this.argumentSlots(node.args,params,!!proc?.params.at(-1)?.paramArray||!!fn?.vbVariadic);
+    const actual=[];
+    for(const {index,node:arg}of slots){
+      const param=signature?.params[index];
+      if(arg.kind==='missing'){actual[index]=proc?MISSING:undefined;continue;}
+      if(param?.byRef&&!param.paramArray&&['id','member','call'].includes(arg.kind)){
+        try{actual[index]={ref:await this.reference(arg,frame,true)};continue;}catch(error){if(!(error instanceof VBError))throw error;}
+      }
+      const value=await this.evaluate(arg,frame);
+      actual[index]=proc||fn?.vbRawArgs?value:await this.defaultValue(value);
+    }
+    if(proc){for(let i=0;i<actual.length;i++)if(!(i in actual))actual[i]=MISSING;return this.callProcedure(target.instance,proc,actual,frame);}
+    if(fn?.vbParams){for(let i=0;i<fn.vbParams.length;i++)if(!slots.some(s=>s.index===i&&s.node.kind!=='missing')&&!fn.vbParams[i].optional&&!fn.vbParams[i].paramArray)throw new VBError('Argument not optional: '+fn.vbParams[i].name,449);}
+    if(target instanceof VBArray)return target.get(...actual);
+    if(target instanceof VBCollection||target instanceof VBDictionary)return target.Item(...actual);
+    if(target?.__native)return this.debugAwait(target.__native.apply(target.receiver,actual));
+    if(typeof target==='function')return this.debugAwait(target(...actual));
+    if(target?.Item&&typeof target.Item==='function')return target.Item(...actual);
+    if(target?.__vbInstance){const getter=target.module.procedures.get('item:get');if(getter)return this.callProcedure(target,getter,actual,frame);}
+    throw new VBError('Expected array or callable procedure',13);
+  }
+  async reference(node,frame=this.currentFrame,objectSet=false) {
+    if(node.kind==='group')return new Cell('Variant',await this.evaluate(node.expr,frame));
+    if(node.kind==='id'){
+      const key=lower(node.name);if(key===lower(frame.proc.name)&&['function','property'].includes(frame.proc.kind))return frame.result;
+      let cell=frame.locals.get(key)||frame.instance.fields.get(key);
+      if(!cell){for(const instance of this.instances.values())if(instance.module.kind==='module'&&instance.fields.has(key)&&(instance===frame.instance||instance.fields.get(key).scope!=='private')){cell=instance.fields.get(key);break;}}
+      if(cell){if(!objectSet){const value=await cell.get();if(value?.__control)return value.defaultRef();const instance=objectIdentity(value),name=value?.__vbInterface?instance.module.interfaceBindings[value.interfaceName]?.defaultMember:instance?.module?.defaultMember;if(instance?.__vbInstance&&name)return this.memberReference(value,name,frame);}return cell;}
+      const setter=frame.module.procedures.get(key+':let')||frame.module.procedures.get(key+':set');if(setter)return new Ref(()=>this.getIdentifier(node.name,frame),v=>this.callProcedure(frame.instance,setter,[v],frame));
+      if(frame.instance.formObject&&this.hasMember(frame.instance.formObject,node.name))return this.memberReference(frame.instance.formObject,node.name,frame);
+      if(frame.module.optionExplicit)throw new VBError(`Variable not defined: ${node.name}`,500);
+      cell=new Cell(defaultIdentifierType(node.name,frame.module.defaultTypes));frame.locals.set(key,cell);return cell;
+    }
+    if(node.kind==='member')return this.memberReference(await this.evaluate(node.object,frame,{raw:true}),node.name,frame,objectSet);
+    if(node.kind==='call'){
+      let target=await this.evaluate(node.callee,frame,{raw:true});const args=[];for(const a of node.args)args.push(await this.evaluate(a,frame));
+      const instance=objectIdentity(target),defaultName=target?.__vbInterface?instance.module.interfaceBindings[target.interfaceName]?.defaultMember:instance?.module?.defaultMember;
+      if(instance?.__vbInstance&&defaultName){const getter=()=>this.callExpression(node,frame);if(target.__vbInterface){const member=this.interfaceProcedure(target,defaultName,objectSet?'set':'let');return new Ref(getter,v=>this.callProcedure(member.instance,member.__procedure,[...args,v],frame));}const setter=instance.module.procedures.get(defaultName+':'+(objectSet?'set':'let'));if(!setter)throw new VBError('Default property is read-only',383);return new Ref(getter,v=>this.callProcedure(instance,setter,[...args,v],frame));}
+      if(target instanceof VBArray)return new Ref(()=>target.get(...args),value=>target.set(args,value),target.type);
+      if(target instanceof VBDictionary)return new Ref(()=>target.Item(...args),value=>target.setItem(...args,value));
+      if(target?.__native&&target.receiver?.setItem)return new Ref(()=>target.__native.apply(target.receiver,args),v=>target.receiver.setItem(...args,v));
+      if(node.callee.kind==='member'){
+        const object=await this.evaluate(node.callee.object,frame,{raw:true});const name=lower(node.callee.name);
+        if(object?.__vbInterface){const member=this.interfaceProcedure(object,node.callee.name,objectSet?'set':'let');return new Ref(()=>this.callExpression(node,frame),v=>this.callProcedure(member.instance,member.__procedure,[...args,v],frame));}
+        if(object?.__vbInstance){const proc=object.module.procedures.get(name+':let')||object.module.procedures.get(name+':set');if(proc){if(proc.scope==='private'&&object.module!==frame?.module)throw new VBError('Property assignment is not accessible',438);return new Ref(()=>this.getMember(object,node.callee.name,frame),v=>this.callProcedure(object,proc,[...args,v],frame));}}
+        if(object?.setIndexed)return new Ref(()=>object[node.callee.name](...args),value=>object.setIndexed(node.callee.name,args,value));
+      }
+      if(target&&typeof target.setItem==='function')return new Ref(()=>target.Item(...args),v=>target.setItem(...args,v));
+      throw new VBError('Invalid indexed assignment',13);
+    }
+    throw new VBError('Invalid assignment target',1002);
+  }
+  async memberReference(object,name,frame,objectSet=false){
+    if(object?.__vbInterface){const member=this.interfaceProcedure(object,name,objectSet?'set':'let');return new Ref(()=>this.getMember(object,name,frame),v=>this.callProcedure(member.instance,member.__procedure,[v],frame));}
+    this.assertVisible(object,name,frame);
+    if(object?.__vbInstance){const key=lower(name);if(object.fields.has(key))return object.fields.get(key);const setter=object.module.procedures.get(key+':let')||object.module.procedures.get(key+':set');if(setter){if(setter.scope==='private'&&object.module!==frame?.module)throw new VBError('Property assignment is not accessible',438);return new Ref(()=>this.getMember(object,name,frame),v=>this.callProcedure(object,setter,[v],frame));}if(object.formObject)return this.memberReference(object.formObject,name,frame);throw new VBError(`Method or data member not found: ${name}`,438);}
+    if(object?.__fields){const entry=[...object.__fields].find(([key])=>lower(key)===lower(name));if(entry)return entry[1];}
+    const key=this.nativeKey(object,name);if(key===null){if(Object.getPrototypeOf(object)===Object.prototype){object[name]=undefined;return new Ref(()=>object[name],v=>object[name]=v);}throw new VBError(`Property not found: ${name}`,438);}return new Ref(()=>object[key],v=>{object[key]=v;return v;});
+  }
+  async callByName(object,name,callType,args=[],frame=this.currentFrame){
+    if(![1,2,4,8].includes(callType))throw new VBError('Invalid procedure call',5);
+    const key=lower(name);if(BLOCKED_MEMBERS.has(key)||key.startsWith('_'))throw new VBError('Member access is not permitted',438);
+    if(object===NOTHING||object===null||object===undefined)throw new VBError('Object variable not set',91);
+    if(typeof object!=='object'||object instanceof VBArray||object instanceof Date||object instanceof VBCurrency||object instanceof VBErrorValue||object===MISSING||object.__fields)throw new VBError('Object required',424);
+    if(callType===8){const value=args.at(-1);if(value!==NOTHING&&(!value||typeof value!=='object'||value instanceof VBArray||value instanceof Date||value instanceof VBCurrency||value instanceof VBErrorValue||value.__fields))throw new VBError('Object required',424);}
+    if(object.__vbInterface){const member=this.interfaceProcedure(object,name,({2:'get',4:'let',8:'set'})[callType]||null);return this.callProcedure(member.instance,member.__procedure,args,frame);}
+    if(object.__vbInstance){
+      // Automation dispatch is public even when invoked by code in the same class.
+      const proc=object.module.procedures.get(key+(callType===1?'':callType===2?':get':callType===4?':let':':set'));
+      if(proc){if(proc.scope==='private')throw new VBError('Member is not publicly accessible',438);return this.callProcedure(object,proc,args,frame);}
+      const field=object.fields.get(key);
+      if(field){if(field.scope==='private')throw new VBError('Member is not publicly accessible',438);if(callType===2){if(args.length)throw new VBError('Wrong number of arguments',450);return field.get();}if(callType===4||callType===8){if(args.length!==1)throw new VBError('Wrong number of arguments',450);if(callType===4&&lower(field.type)==='object')throw new VBError('Object assignment requires vbSet',13);return field.set(args[0]);}throw new VBError('Member is not a method',438);}
+      if(object.formObject)return this.callByName(object.formObject,name,callType,args,frame);
+      throw new VBError('Method or data member not found: '+name,438);
+    }
+    const native=this.nativeKey(object,name);if(native===null)throw new VBError('Object does not support property or method: '+name,438);
+    const value=object[native];
+    if(callType===1){if(typeof value!=='function')throw new VBError('Member is not a method',438);return this.debugAwait(value.apply(object,args));}
+    if(callType===2){if(typeof value==='function'){if(!['item','list','selected','itemdata','textmatrix','colwidth','rowheight'].includes(key))throw new VBError('Member is not a property',438);return this.debugAwait(value.apply(object,args));}if(args.length)throw new VBError('Wrong number of arguments',450);return value;}
+    if(!args.length)throw new VBError('Argument not optional',449);
+    if(typeof value==='function'){
+      if(key==='item'&&typeof object.setItem==='function')return object.setItem(...args);
+      if(typeof object.setIndexed==='function')return object.setIndexed(name,args.slice(0,-1),args.at(-1));
+      throw new VBError('Property is read-only',383);
+    }
+    if(args.length!==1)throw new VBError('Wrong number of arguments',450);
+    let owner=object,descriptor;for(let i=0;owner&&i<5;i++,owner=Object.getPrototypeOf(owner)){descriptor=Object.getOwnPropertyDescriptor(owner,native);if(descriptor)break;}
+    if(descriptor&&(descriptor.get&&!descriptor.set||'writable'in descriptor&&!descriptor.writable))throw new VBError('Property is read-only',383);
+    object[native]=args[0];return args[0];
+  }
+  async callProcedure(instance,proc,args=[],caller=null){
+    if(this.stack.length>=this.options.maxCallDepth)throw new VBError('Out of stack space',28);
+    const frame=this.makeFrame(instance,proc);frame.caller=caller;if(this.recordSchema(proc.returnType,frame.module))frame.result=new Cell(proc.returnType,await this.createRecord(proc.returnType,frame));
+    if(args.length>proc.params.length&&!proc.params.at(-1)?.paramArray)throw new VBError(`Wrong number of arguments to ${proc.name}`,450);
+    for(let i=0;i<proc.params.length;i++){
+      const param=proc.params[i];let actual=i<args.length?args[i]:MISSING,cell;
+      if(param.paramArray){cell=new Cell('Variant',VBArray.from(args.slice(i).map(v=>v?.ref?v.ref.get():v)));frame.locals.set(lower(param.name),cell);break;}
+      if(actual===MISSING){if(param.initial)actual=await this.evaluate(param.initial,frame);else if(!param.optional)throw new VBError(`Argument not optional: ${param.name}`,449);else actual=lower(param.type)==='variant'?MISSING:defaultValue(param.type);}
+      if(param.byRef&&actual?.ref){if(this.recordSchema(param.type,frame.module)){const value=await actual.ref.get();if(!value?.__fields||lower(value.__type)!==lower(param.type))throw new VBError('ByRef user-defined type mismatch',13);}cell=objectSupports(await actual.ref.get(),param.type)&&lower(actual.ref.type)!==lower(param.type)?new Ref(async()=>coerce(await actual.ref.get(),param.type),v=>actual.ref.set(v),param.type):actual.ref;}
+      else cell=new Cell(param.bounds!==null?'Variant':param.type,actual?.ref?await actual.ref.get():actual);
+      frame.locals.set(lower(param.name),cell);
+    }
+    this.stack.push(frame);this.currentFrame=frame;
+    try {await this.execute(frame);return frame.result.get();}
+    finally{for(const key of this.watchpointValues.keys())if(key.includes(':'+frame.depth+':'))this.watchpointValues.delete(key);this.stack.pop();this.currentFrame=this.stack.at(-1)||null;if(!this.stack.length&&this.eventQueue.length)queueMicrotask(()=>this.processEvents());}
+  }
+  async checkpoint(ins,frame){
+    if(this.state==='stopped')throw new StopExecution();
+    if(this.debugEvaluation){await this.debugEvaluation.checkpoint();return;}
+    this.instructionCount++;if(this.instructionCount>this.options.instructionLimit)throw new VBError(`Instruction budget exceeded (${this.options.instructionLimit.toLocaleString()}); execution stopped`,7);
+    const locationChanged=frame.lastLine!==ins.line||frame.pc<=frame.lastPc;const bp=!ins.implicit&&this.breakpoints.get(lower(ins.source)+':'+ins.line);
+    let pause=false,pauseReason=null;
+    if(locationChanged&&bp){pause=true;if(bp.condition){try{pause=truth(this.debugInspector.node(this.debugInspector.parse(bp.condition),frame,{count:0},0));}catch{pause=true;}}}
+    if(locationChanged&&this.stepMode){if(this.stepMode.mode==='into'||this.stepMode.mode==='over'&&frame.depth<=this.stepMode.depth||this.stepMode.mode==='out'&&frame.depth<this.stepMode.depth)pause=true;}
+    if(locationChanged&&this.runTarget&&lower(ins.source)===lower(this.runTarget.module)&&ins.line===this.runTarget.line){pause=true;pauseReason='run-to-cursor';this.runTarget=null;}
+    if(locationChanged&&this.watchpoints.length){for(const watch of this.watchpoints){if(watch.module&&lower(watch.module)!==lower(frame.module.name)||watch.procedure&&lower(watch.procedure)!==lower(frame.proc.name))continue;try{const value=this.debugInspector.node(watch.node,frame,{count:0},0),key=watch.id+':'+frame.depth+':'+lower(frame.module.name+'.'+frame.proc.name),prior=this.watchpointValues.get(key);if(watch.mode==='true'?truth(value):prior!==undefined&&!this.sameWatchValue(prior.value,value)){pause=true;pauseReason='watch:'+watch.expression;}this.watchpointValues.set(key,{value:this.watchSnapshot(value)});}catch{/* Out of scope or non-evaluable values do not run user code. */}}}
+    if(this.pauseRequested)pause=true;
+    frame.lastLine=ins.line;frame.lastPc=frame.pc;
+    if(pause){this.pauseRequested=false;this.stepMode=null;this.debugPauseId++;this.pauseReason=pauseReason||'breakpoint/step';const suspended=new Promise(resolve=>this.pauseResolver=resolve);this.setState('paused');this.currentFrame=frame;this.emit('pause',{instruction:ins,frame,stack:[...this.stack],reason:this.pauseReason,pauseId:this.debugPauseId});await suspended;this.pauseResolver=null;if(this.state==='stopped')throw new StopExecution();}
+    const now=performance.now();if(now-this.lastYield>=this.options.sliceMilliseconds){await new Promise(resolve=>setTimeout(resolve,0));this.lastYield=performance.now();if(this.state==='stopped')throw new StopExecution();}
+  }
+  applyEdits(project){
+    if(this.debugEvaluation)throw new VBError('Finish or cancel debugger evaluation before editing code',5);
+    if(this.state!=='paused'&&!(this.state==='running'&&!this.stack.length))throw new VBError('Pause execution before applying code changes',5);
+    const next=compileProject(project),plan=planLiveEdit(this.program,next,this.stack),invalidated=[];
+    // Procedure objects retain their identity: pending events, property references,
+    // class instances and suspended caller frames all observe the committed code.
+    for(const {oldProc,newProc}of plan.updates)Object.assign(oldProc,newProc);
+    for(const {frame,...update}of plan.frameUpdates)Object.assign(frame,update);
+    for(const [key,module]of this.program.modules){const replacement=next.modules.get(key);for(const [name,proc]of replacement.procedures)if(!module.procedures.has(name))module.procedures.set(name,proc);module.source=replacement.source;}
+    const breakpoints=[];for(const bp of this.breakpoints.values()){const mapped=plan.lineMap.get(lower(bp.module)+':'+bp.line);if(mapped===undefined)invalidated.push(bp);else breakpoints.push({...bp,line:mapped});}
+    this.breakpoints=new Map(breakpoints.map(bp=>[lower(bp.module)+':'+bp.line,bp]));
+    this.program.sourceProject=structuredClone(project);this.codeRevision=(this.codeRevision||0)+1;
+    this.emit('breakpoints',breakpoints);
+    if(this.state==='paused'){const frame=this.currentFrame,ins=frame.proc.code[frame.pc];frame.lastLine=ins?.line??null;frame.lastPc=frame.pc;this.emit('pause',{instruction:ins,frame,stack:[...this.stack],reason:'code-edit'});}
+    const result={revision:this.codeRevision,breakpoints,invalidatedBreakpoints:invalidated,updatedProcedures:plan.updates.length};
+    this.emit('codeChanged',result);return result;
+  }
+  setNextStatement(module,line){
+    if(this.debugEvaluation)throw new VBError('Finish or cancel debugger evaluation before moving execution',5);
+    const frame=this.currentFrame;if(this.state!=='paused'||!frame)throw new VBError('Set Next Statement is available only in break mode',5);
+    if(lower(module)!==lower(frame.module.name))throw new VBError('The next statement must remain in the active procedure',5);
+    frame.pc=nextStatementIndex(frame,Number(line));frame.lastPc=frame.pc;frame.lastLine=frame.proc.code[frame.pc].line;
+    this.emit('pause',{instruction:frame.proc.code[frame.pc],frame,stack:[...this.stack],reason:'set-next'});
+    return {source:frame.module.name,line:frame.lastLine,procedure:frame.proc.name};
+  }
+  pause(){if(this.state==='running')this.pauseRequested=true;}
+  resume(mode='continue'){if(this.debugEvaluation)throw new VBError('Finish or cancel debugger evaluation before continuing',5);if(this.state!=='paused')return;this.stepMode=mode==='continue'?null:{mode,depth:this.currentFrame?.depth||0};this.setState('running');this.pauseResolver?.();}
+  stop(){this.debugEvaluation?.cancel();this.setState('stopped');if(!this.debugEvaluation)this.pauseResolver?.();this.eventQueue=[];try{this.fs.close();}catch{}this.host.stop?.();this.emit('stop');}
+  async execute(frame){
+    while(frame.pc<frame.proc.code.length){await this.checkpoint(frame.proc.code[frame.pc],frame);const current=frame.pc,ins=frame.proc.code[current];if(!ins)return;frame.pc++;
+      try{
+        switch(ins.op){
+          case 'dim':for(const decl of ins.decls)await this.declare(decl,frame,frame.locals,ins.static||frame.proc.static);break;
+          case 'assign':{const ref=await this.reference(ins.target,frame,ins.objectSet);const value=await this.evaluate(ins.expr,frame);if(ref.isArray&&(await ref.get()) instanceof VBArray&&!(await ref.get()).dynamic)throw new VBError('Cannot assign to a fixed-size array',10);await ref.set(ins.objectSet?value:await this.defaultValue(value));break;}
+          case 'expr':await this.evaluate(ins.expr,frame);break;
+          case 'print':{const values=[];for(const e of ins.exprs){const v=await this.defaultValue(await this.evaluate(e,frame));values.push(v===null?'Null':v===undefined?'':v instanceof VBErrorValue?v.toString():vbString(v));}this.output(values.join(' '),ins.newline);break;}
+          case 'assert':if(!truth(await this.evaluate(ins.expr,frame))){this.output('Assertion failed: '+ins.source+':'+ins.line);this.pauseRequested=true;}break;
+          case 'branch':{const test=truth(await this.evaluate(ins.test,frame));if(ins.invert?test:!test)frame.pc=ins.target;break;}
+          case 'jump':frame.pc=ins.target;break;
+          case 'temp':frame.temps.set(ins.id,await this.evaluate(ins.expr,frame));break;
+          case 'case':{const value=frame.temps.get(ins.id);let matched=false;for(const c of ins.cases){if(c.kind==='range')matched=truth(binary('>=',value,await this.evaluate(c.low,frame),frame.module.optionCompare))&&truth(binary('<=',value,await this.evaluate(c.high,frame),frame.module.optionCompare));else matched=truth(binary(c.op||'=',value,await this.evaluate(c.expr,frame),frame.module.optionCompare));if(matched)break;}if(!matched)frame.pc=ins.target;break;}
+          case 'forInit':{const ref=await this.reference(parseExpression(ins.name),frame),start=numeric(await this.evaluate(ins.start,frame)),end=numeric(await this.evaluate(ins.end,frame)),step=numeric(await this.evaluate(ins.step,frame));if(step===0)throw new VBError('For Step cannot be zero in the browser runtime',5);await ref.set(start);frame.temps.set(ins.id,{ref,end,step});if(step>0?start>end:start<end)frame.pc=ins.target;break;}
+          case 'forNext':{const data=frame.temps.get(ins.id),next=numeric(await data.ref.get())+data.step;await data.ref.set(next);if(data.step>0?next<=data.end:next>=data.end)frame.pc=ins.target;break;}
+          case 'eachInit':{const value=await this.evaluate(ins.expr,frame);if(!value?.[Symbol.iterator])throw new VBError('Object is not a collection',451);const iterator=value[Symbol.iterator](),ref=await this.reference(parseExpression(ins.name),frame);frame.temps.set(ins.id,{iterator,ref});const next=iterator.next();if(next.done)frame.pc=ins.target;else await ref.set(next.value);break;}
+          case 'eachNext':{const data=frame.temps.get(ins.id),next=data.iterator.next();if(!next.done){await data.ref.set(next.value);frame.pc=ins.target;}break;}
+          case 'stringAlign':{
+            const ref=await this.reference(ins.target,frame,true),current=await ref.get();
+            if(typeof current!=='string')throw new VBError('String assignment requires a String variable',13);
+            const source=vbString(await this.evaluate(ins.expr,frame)).slice(0,current.length);
+            await ref.set(ins.right?source.padStart(current.length,' '):source.padEnd(current.length,' '));break;
+          }
+          case 'stringMid':{
+            const ref=await this.reference(ins.target,frame,true),current=await ref.get();
+            if(typeof current!=='string')throw new VBError('Mid requires a String variable',13);
+            const start=coerce(await this.evaluate(ins.start,frame),'Long'),length=ins.length?coerce(await this.evaluate(ins.length,frame),'Long'):current.length;
+            if(start<1||length<0)throw new VBError('Invalid procedure call',5);
+            const source=vbString(await this.evaluate(ins.expr,frame)),count=Math.max(0,Math.min(length,source.length,current.length-start+1));
+            if(count)await ref.set(current.slice(0,start-1)+source.slice(0,count)+current.slice(start-1+count));break;
+          }
+          case 'redim':for(const decl of ins.decls){let ref;try{ref=await this.reference({kind:'id',name:decl.name},frame,true);}catch(e){if(e.number===500){frame.locals.set(lower(decl.name),new Cell());ref=frame.locals.get(lower(decl.name));}else throw e;}const bounds=await this.evalBounds(decl.bounds,frame),value=await ref.get();if(value instanceof VBArray)value.redim(bounds,ins.preserve);else{const a=await this.createArray(bounds,decl.type,frame,decl.fixedLength);a.dynamic=true;await ref.set(a);}}break;
+          case 'erase':for(const expr of ins.exprs){const value=await this.evaluate(expr,frame);if(!(value instanceof VBArray))throw new VBError('Expected array',13);value.erase();}break;
+          case 'withPush':frame.withStack.push(await this.evaluate(ins.expr,frame,{raw:true}));break;
+          case 'withPop':frame.withStack.pop();break;
+          case 'withUnwind':frame.withStack.splice(-ins.count);break;
+          case 'onError':frame.errorMode=ins.mode;frame.errorTarget=ins.target;frame.errorActive=false;break;
+          case 'resume':if(frame.errorPc===null)throw new VBError('Resume without error',20);frame.pc=ins.mode==='retry'?frame.errorPc:ins.mode==='next'?frame.errorPc+1:ins.target;frame.errorActive=false;this.err.Clear();break;
+          case 'gosub':frame.gosubStack.push(frame.pc);frame.pc=ins.target;break;
+          case 'gosubReturn':if(!frame.gosubStack.length)throw new VBError('Return without GoSub',3);frame.pc=frame.gosubStack.pop();break;
+          case 'return':return;
+          case 'stop':if(!this.debugEvaluation)this.pauseRequested=true;break;
+          case 'end':this.stop();throw new StopExecution();
+          case 'form':{if(ins.expr.kind==='call'){const array=await this.evaluate(ins.expr.callee,frame,{raw:true});if(array?.__type==='ControlArray'){if(ins.expr.args.length!==1)throw new VBError('Control arrays require one index',450);const index=await this.evaluate(ins.expr.args[0],frame);if(ins.action==='load')array.Load(index);else array.Unload(index);break;}}const object=await this.evaluate(ins.expr,frame,{raw:true});if(ins.action==='unload')await this.unloadForm(object);else await this.loadForm(object);break;}
+          case 'fileOpen':this.fs.open(await this.evaluate(ins.path,frame),ins.mode,await this.evaluate(ins.handle,frame),ins.recordLength?await this.evaluate(ins.recordLength,frame):128,ins.access,ins.sharing);break;
+          case 'fileRecord':{const n=await this.evaluate(ins.handle,frame),position=ins.position?await this.evaluate(ins.position,frame):undefined,ref=await this.reference(ins.target,frame,true),value=await ref.get(),mode=this.fs.handle(n).mode;if(ins.action==='put')this.fs.put(n,position,encodeVariable(value,ref,mode));else{const result=this.fs.get(n,position,bytes=>decodeVariable(bytes,ref,value,mode));await ref.set(result);}break;}
+          case 'fileSeek':this.fs.seek(await this.evaluate(ins.handle,frame),await this.evaluate(ins.position,frame));break;
+          case 'fileLock':this.fs.lock(await this.evaluate(ins.handle,frame),ins.start?await this.evaluate(ins.start,frame):undefined,ins.end?await this.evaluate(ins.end,frame):undefined,ins.unlock);break;
+          case 'fileCopy':this.fs.copy(await this.evaluate(ins.sourcePath,frame),await this.evaluate(ins.destination,frame));break;
+          case 'fileRename':this.fs.rename(await this.evaluate(ins.sourcePath,frame),await this.evaluate(ins.destination,frame));break;
+          case 'fileClose':if(!ins.handles.length)this.fs.close();else for(const h of ins.handles)this.fs.close(await this.evaluate(h,frame));break;
+          case 'filePrint':{const values=[];for(const e of ins.exprs)values.push(await this.defaultValue(await this.evaluate(e,frame)));const text=ins.csv?values.map(v=>typeof v==='string'?'"'+v.replace(/"/g,'""')+'"':String(v??'')).join(','):values.map(v=>String(v??'')).join('');this.fs.print(await this.evaluate(ins.handle,frame),text,ins.newline);break;}
+          case 'fileInput':{const text=this.fs.lineInput(await this.evaluate(ins.handle,frame));const values=ins.whole?[text]:this.parseCSV(text);for(let i=0;i<ins.targets.length;i++)await (await this.reference(ins.targets[i],frame)).set(values[i]??'');break;}
+          case 'graphics':{const obj=await this.evaluate(ins.object,frame,{raw:true}),control=obj?.__vbInstance?obj.formObject:obj;if(!control?.draw)throw new VBError('Object does not support graphics methods',438);const coords=[];for(const e of ins.coords)coords.push(numeric(await this.evaluate(e,frame)));control.draw(ins.kind,coords,numeric(await this.evaluate(ins.color,frame)),ins.fill);break;}
+          case 'raiseEvent':await this.raiseEvent(frame.instance,ins.expr.callee.name,ins.expr.args,frame);break;
+          default:throw new VBError('Invalid bytecode instruction '+ins.op,1002);
+        }
+      }catch(error){
+        if(error instanceof StopExecution||error.debugEvaluationAbort)throw error;
+        if(!(error instanceof VBError))error=new VBError(error.message||String(error),5);
+        error.source ||= ins.source;error.line ||= ins.line;this.err.Number=error.number;this.err.Description=error.message;this.err.Source=error.source;this.lastError=error;
+        if(!frame.errorActive&&frame.errorMode!=='off'){frame.errorPc=current;if(frame.errorMode==='goto'){frame.errorActive=true;frame.pc=frame.errorTarget;}else frame.pc=current+1;}
+        else throw error;
+      }
+    }
+  }
+  parseCSV(text){const values=[];let quoted=false,s='',wasString=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){wasString=true;if(quoted&&text[i+1]==='"'){s+='"';i++;}else quoted=!quoted;}else if(c===','&&!quoted){values.push(wasString?s:Number(s));s='';wasString=false;}else s+=c;}values.push(wasString?s:Number(s));return values;}
+  reportError(error){if(error instanceof StopExecution)return;this.lastError=error;this.emit('error',{message:error.message,number:error.number||5,source:error.source,line:error.line});this.host.error?.(error);this.setState('error');}
+  dispatch(module,name,args=[],{coalesce=false}={}){
+    if(this.state==='stopped'||this.state==='error')return Promise.resolve();const instance=typeof module==='string'?this.instances.get(lower(module)):module;const proc=instance?.module.procedures.get(lower(name));if(!proc)return Promise.resolve();const key=lower(instance.module.name)+'.'+lower(name);
+    if(coalesce&&this.eventQueue.some(e=>e.key===key))return Promise.resolve();if(this.eventQueue.length>=1000){this.output('Event queue limit reached; newest event discarded.');return Promise.resolve();}
+    return new Promise((resolve,reject)=>{this.eventQueue.push({instance,proc,args,key,resolve,reject});this.processEvents();});
+  }
+  async runQueuedEvent(event){try{event.resolve(await(event.action?event.action():this.callProcedure(event.instance,event.proc,event.args)));}catch(error){if(!(error instanceof StopExecution))this.reportError(error);event.resolve(undefined);}}
+  async processEvents(){if(this.processing||this.stack.length)return;this.processing=true;try{while(this.eventQueue.length&&this.state!=='stopped'&&this.state!=='error')await this.runQueuedEvent(this.eventQueue.shift());}finally{this.processing=false;}}
+  async immediate(text,options={}){if(this.state==='paused')return this.evaluateExplicit(text,{...options,immediate:true});return this.immediateAt(text);}
+  async immediateAt(text,selectedFrame=null){const instance=this.instances.values().next().value;if(!selectedFrame&&!this.currentFrame&&!instance)throw new VBError('Start the runtime before evaluating an expression',5);const frame=selectedFrame||this.currentFrame||this.makeFrame(instance);if(!frame.instance)throw new VBError('Start the runtime before evaluating an expression',5);if(/^\s*\?/.test(text)){const value=await this.evaluate(parseExpression(text.replace(/^\s*\?/,'')),frame);this.output(describe(value));return value;}const assignment=String(text).match(/^\s*(?:Let\s+|Set\s+)?([A-Za-z_][A-Za-z0-9_.$%&!#@]*(?:\([^)]*\))?)\s*=\s*([\s\S]+)$/i);if(assignment){const ref=await this.reference(parseExpression(assignment[1]),frame);const value=await this.evaluate(parseExpression(assignment[2]),frame,{raw:/^\s*Set\s/i.test(text)});await ref.set(value);return value;}const value=await this.evaluate(parseCall(text),frame);if(value!==undefined)this.output(describe(value));return value;}
+  debugAwait(value){return this.debugEvaluation?this.debugEvaluation.wait(value):value;}
+  cancelEvaluation(){this.debugEvaluation?.cancel();return {cancelled:!!this.debugEvaluation};}
+  async evaluateExplicit(text,{frameIndex=null,pauseId,instructionLimit=100000,timeLimit=5000,immediate=false}={}){
+    if(this.state!=='paused')throw new VBError('Explicit debugger evaluation requires break mode',5);
+    if(this.debugEvaluation)throw new VBError('Another debugger evaluation is in progress',5);
+    if(pauseId!==undefined&&pauseId!==this.debugPauseId)throw new VBError('The debugger context changed; refresh before evaluating',5);
+    text=String(text);if(!text.trim()||text.length>65536)throw new VBError('Enter an expression of at most 65,536 characters',5);
+    const frame=this.debugInspector.frame(frameIndex);if(!frame)throw new VBError('No selected stack frame',5);
+    const session=new DebugEvaluationSession(this,{instructionLimit,timeLimit}),saved={frame:this.currentFrame,err:{...this.err},lastError:this.lastError,step:this.stepMode,pauseRequested:this.pauseRequested,runTarget:this.runTarget};
+    this.debugEvaluation=session;this.currentFrame=frame;this.emit('evaluation',{active:true,frameIndex:this.stack.indexOf(frame)});
+    try {const value=immediate?await this.immediateAt(text,frame):await this.evaluate(parseExpression(text.replace(/^\s*\?/,'')),frame);session.check();return value;}
+    finally {session.dispose();this.debugEvaluation=null;this.currentFrame=saved.frame;if(this.state==='stopped')this.pauseResolver?.();Object.assign(this.err,saved.err);this.lastError=saved.lastError;this.stepMode=saved.step;this.pauseRequested=saved.pauseRequested;this.runTarget=saved.runTarget;this.emit('evaluation',{active:false,instructions:session.instructions,milliseconds:performance.now()-session.started});}
+  }
+  async evaluateWatch(text,options={}){return this.debugInspector.evaluate(text,options.frameIndex??null);}
+  inspectDebug(expression,options={}){return this.debugInspector.inspect(expression,options);}
+  debugLocals(options={}){return this.debugInspector.locals(options);}
+  assignDebug(expression,text,options={}){return this.debugInspector.assign(expression,text,options);}
+  setWatchpoints(watches=[]){if(!Array.isArray(watches)||watches.length>100)throw new VBError('At most 100 break watches are supported',5);const next=watches.map((w,i)=>{if(!['true','change'].includes(w.mode))throw new VBError('Invalid watch type',5);return {id:String(w.id??i),expression:String(w.expression),mode:w.mode,module:String(w.module||''),procedure:String(w.procedure||''),node:this.debugInspector.parse(w.expression)};});this.watchpoints=next;this.watchpointValues.clear();}
+  watchSnapshot(value){return value instanceof VBCurrency?{currency:value.raw}:value instanceof Date?{date:value.getTime()}:value instanceof VBErrorValue?{error:value.number}:value;}
+  sameWatchValue(before,after){if(before&&typeof before==='object'){if(Object.hasOwn(before,'currency'))return after instanceof VBCurrency&&before.currency===after.raw;if(Object.hasOwn(before,'date'))return after instanceof Date&&before.date===after.getTime();if(Object.hasOwn(before,'error'))return after instanceof VBErrorValue&&before.error===after.number;}return Object.is(before,after);}
+  runToCursor(module,line){if(this.state!=='paused')throw new VBError('Run to Cursor requires break mode',5);const source=this.program.modules.get(lower(module));if(!source||![...source.procedures.values()].some(p=>p.code.some(ins=>ins.line===line)))throw new VBError('The selected line is not executable',5);this.runTarget={module:source.name,line};this.resume('continue');return {module:source.name,line};}
+  locals(){return this.debugInspector.locals({includeFields:false}).map(({name,type,value})=>({name,type,value}));}
+  saveSetting(app,section,key,value){const k=[app,section,key].join('/');this.settings[k]=String(value);this.host.persist?.();}
+  getSetting(app,section,key,def=''){return this.settings[[app,section,key].join('/')]??def;}
+  deleteSetting(app,section,key){const prefix=[app,section].join('/')+'/';for(const k of Object.keys(this.settings))if(key===undefined?k.startsWith(prefix):k===prefix+key)delete this.settings[k];this.host.persist?.();}
+}

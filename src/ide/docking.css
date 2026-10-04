@@ -1,0 +1,30 @@
+/* Explicit grid tracks allow genuine docking on every document edge. */
+.ide-shell .workspace.dock-workspace{display:grid!important;position:relative;min-width:0;min-height:0;overflow:hidden;gap:0;grid-template-columns:var(--dock-left,74px) var(--dock-gap-left,4px) minmax(0,1fr) var(--dock-gap-right,4px) var(--dock-right,250px)!important;grid-template-rows:var(--dock-top,0px) var(--dock-gap-top,0px) minmax(0,1fr) var(--dock-gap-bottom,0px) var(--dock-bottom,0px)!important}
+.dock-workspace>.dock-center{grid-column:3!important;grid-row:3!important;display:flex!important;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.dock-workspace .dock-center>.document-area{flex:1;min-height:0;width:100%;height:100%}
+.dock-zone{display:flex;min-width:0;min-height:0;overflow:hidden;gap:0;flex-direction:column}
+.dock-zone[hidden],.dock-edge-splitter[hidden],.dock-group[hidden],.managed-panel[hidden],.dock-tabbar[hidden]{display:none!important}
+.dock-zone-left{grid-column:1;grid-row:3}.dock-zone-right{grid-column:5;grid-row:3}
+.dock-zone-top{grid-column:1/6;grid-row:1;flex-direction:row}.dock-zone-bottom{grid-column:1/6;grid-row:5;flex-direction:row}
+.dock-group{position:relative;display:flex;flex-direction:column;overflow:hidden;min-width:0;min-height:0;background:var(--vb-face);border:1px solid;border-color:var(--vb-light) var(--vb-shadow) var(--vb-shadow) var(--vb-light)}
+.dock-group-body{position:relative;display:flex;flex:1;min-width:0;min-height:0;overflow:hidden}
+.ide-shell .dock-group .managed-panel{display:flex;position:relative!important;inset:auto!important;width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;max-width:none!important;max-height:none!important;flex:1 1 auto;flex-direction:column;resize:none!important;margin:0!important;border:0!important;box-shadow:none!important;overflow:hidden!important;z-index:auto!important}
+.dock-group .managed-panel>.tool-caption{flex:0 0 20px;touch-action:none;cursor:default}
+.dock-group .managed-panel>.property-inspector,.dock-group .managed-panel>.project-tree,.dock-group .managed-panel>.debug-body{flex:1;min-height:0;overflow:auto}
+.dock-group .managed-panel>.layout-monitor{flex:1;min-height:0;overflow:hidden}.dock-group .toolbox-grid{overflow:auto;min-height:0}.dock-group .project-tree{height:auto!important}
+.dock-group.dock-active>.dock-group-body>.managed-panel>.tool-caption{background:var(--vb-title);color:var(--vb-title-text)}
+.dock-floating{position:absolute;flex:none!important;z-index:20;box-shadow:1px 1px 0 var(--vb-dark);padding:2px}
+.dock-floating .tool-caption{background:var(--vb-inactive);color:var(--vb-inactive-text)}
+.dock-tabbar{display:flex;flex:0 0 21px;min-width:0;overflow-x:auto;overflow-y:hidden;gap:1px;scrollbar-width:thin;background:var(--vb-face)}
+.dock-tabbar>button{flex-shrink:0;white-space:nowrap;height:20px;min-height:20px;padding:1px 7px;touch-action:none;border-top:0;box-shadow:none}
+.dock-tabbar>button[aria-selected=true]{font-weight:bold;background:var(--vb-window);border-bottom-color:var(--vb-shadow)}
+.dock-edge-splitter,.dock-group-splitter{background:var(--vb-face);touch-action:none;user-select:none;min-width:0;min-height:0}
+.dock-edge-splitter-left{grid-column:2;grid-row:3;cursor:ew-resize}.dock-edge-splitter-right{grid-column:4;grid-row:3;cursor:ew-resize}
+.dock-edge-splitter-top{grid-column:1/6;grid-row:2;cursor:ns-resize}.dock-edge-splitter-bottom{grid-column:1/6;grid-row:4;cursor:ns-resize}
+.dock-group-splitter{flex:0 0 4px;cursor:ns-resize}.dock-zone-top>.dock-group-splitter,.dock-zone-bottom>.dock-group-splitter{cursor:ew-resize}
+.dock-drop-preview{position:absolute;z-index:9999;pointer-events:none;display:flex;align-items:center;justify-content:center;border:2px dashed var(--vb-selection);background:color-mix(in srgb,var(--vb-selection) 22%,transparent);color:var(--vb-text);font-weight:bold}
+.dock-drop-preview[hidden]{display:none}.dock-resize{display:none;position:absolute;touch-action:none;z-index:6}.dock-floating>.dock-resize{display:block}
+.dock-resize-n,.dock-resize-s{height:4px;left:4px;right:4px;cursor:ns-resize}.dock-resize-n{top:0}.dock-resize-s{bottom:0}
+.dock-resize-w,.dock-resize-e{width:4px;top:4px;bottom:4px;cursor:ew-resize}.dock-resize-w{left:0}.dock-resize-e{right:0}
+.dock-resize-ne,.dock-resize-nw,.dock-resize-se,.dock-resize-sw{width:7px;height:7px}.dock-resize-ne{right:0;top:0;cursor:nesw-resize}.dock-resize-nw{left:0;top:0;cursor:nwse-resize}.dock-resize-se{right:0;bottom:0;cursor:nwse-resize}.dock-resize-sw{left:0;bottom:0;cursor:nesw-resize}
+@media (forced-colors:active){.dock-drop-preview{background:Canvas;border-color:Highlight}.dock-group{border-color:ButtonText}}

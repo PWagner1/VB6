@@ -1,0 +1,16 @@
+import {ResourceStore} from './resources.js';
+import {readRES,writeRES,setResource,setResourceString} from '../project/res.js';
+import {THEMES,applyTheme,colorValue} from '../theme/theme.js';
+import {MemoryRecordset} from './library.js';
+import {RichTextDocument,parseRTF,writeRTF} from '../controls/rtf.js';
+import { ApplicationHost } from './host.js';
+import { VirtualMachine } from './vm.js';
+import { compileProject, compileModule } from '../language/compiler.js';
+import { parseExpression } from '../language/expression.js';
+import { NOTHING, MISSING, VBErrorValue, Cell, Ref, VBArray, VBCollection, VBDictionary, VBCurrency } from './values.js';
+import {asDate,dateAdd,dateDiff,datePart,dateSerial,timeSerial,dateToSerial,serialToDate} from './calendar.js';
+import { VirtualFileSystem } from './filesystem.js';
+import { BrowserControl, BrowserForm } from '../controls/controls.js';
+import { GraphicsSurface } from '../graphics/surface.js';
+export async function mountApplication(project,container=document.body,options={}){const host=new ApplicationHost(project,container,options);await host.start();return host;}
+export const RuntimeAPI={ResourceStore,readRES,writeRES,setResource,setResourceString,THEMES,applyTheme,colorValue,NOTHING,MISSING,VBErrorValue,asDate,dateAdd,dateDiff,datePart,dateSerial,timeSerial,dateToSerial,serialToDate,Cell,Ref,MemoryRecordset,RichTextDocument,parseRTF,writeRTF,ApplicationHost,VirtualMachine,compileProject,compileModule,parseExpression,VBArray,VBCollection,VBDictionary,VBCurrency,VirtualFileSystem,BrowserControl,BrowserForm,GraphicsSurface};
