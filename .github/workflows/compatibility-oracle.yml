@@ -22,7 +22,12 @@ jobs:
       - run: New-Item -ItemType Directory -Force reports/conformance
       - run: node tools/conformance/vectors.mjs reports/conformance/vectors.json
       - name: Query actual Windows Automation and NLS APIs
-        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/conformance/windows-oracle.ps1 -Vectors reports/conformance/vectors.json -Output reports/conformance/windows-oracle.json
+        shell: powershell
+        run: |
+          Start-Transcript -Path reports/conformance/oracle-transcript.txt
+          try { & tools/conformance/windows-oracle.ps1 -Vectors reports/conformance/vectors.json -Output reports/conformance/windows-oracle.json }
+          catch { $_ | Format-List * -Force; $_.Exception.ToString() | Set-Content reports/conformance/oracle-error.txt; exit 1 }
+          finally { Stop-Transcript }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
