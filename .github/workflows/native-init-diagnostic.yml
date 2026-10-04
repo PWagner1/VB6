@@ -14,31 +14,31 @@ jobs:
         with:
           node-version: '22'
       - run: node tools/win32-fixtures.mjs
-      - name: Read only this test child's native global state
+      - name: Diagnose only test-process runtime errors
         shell: pwsh
         run: |
-          Add-Type @'
-          using System;
-          using System.Runtime.InteropServices;
-          public static class AotStateDiagnostic {
-            [DllImport("kernel32.dll",SetLastError=true)] public static extern bool ReadProcessMemory(IntPtr h, IntPtr address, byte[] data, UIntPtr size, out UIntPtr read);
-          }
-          '@
           $file='tools/test-win32-aot.ps1'
           $text=Get-Content -Raw $file
-          $anchor=" Check 'actual native EDIT class' ([AotWindowsTest]::Class(`$text) -eq 'Edit')"
-          $diagnostic=@'
-           $entry=(Get-Content -Raw (Join-Path $Directory 'build-evidence.json')|ConvertFrom-Json)|Where-Object {$_.file -like '*AotWindows.exe'}
-           $section=$entry.sections|Where-Object {$_.name -eq '.data'}
-           $base=$gui.MainModule.BaseAddress.ToInt64()
-           $bytes=[byte[]]::new(112);$read=[UIntPtr]::Zero
-           $ok=[AotStateDiagnostic]::ReadProcessMemory($gui.Handle,[IntPtr]($base+$section.rva),$bytes,[UIntPtr]112,[ref]$read)
-           Write-Host ('INITIAL STATE read='+$ok+' base='+$base+' data='+$section.rva)
-           for($i=0;$i -lt 112;$i+=4){Write-Host ('STATE '+$i+' = '+[BitConverter]::ToInt32($bytes,$i))}
-           Write-Host ('CAPTION '+[AotWindowsTest]::Text($window))
+          $text=$text.Replace('$processes.Add($p);return $p','$null=$p.Handle;$processes.Add($p);return $p')
+          $before=@'
+            [AotWindowsTest]::PostMessage([AotWindowsTest]::GetDlgItem($errorWindow,1),0xf5,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
+            Check ($fault[0]+' exits with documented error') ($p.WaitForExit(15000) -and $p.ExitCode -eq $fault[1])
           '@
-          if(-not $text.Contains($anchor)){throw 'Diagnostic anchor mismatch'}
-          $text=$text.Replace($anchor,$anchor+"`n"+$diagnostic)
-          $text=$text.Replace('throw "Timed out: $Name"','foreach($p in $processes){Write-Host ("PROCESS "+$p.Id+" exited="+$p.HasExited+" exit="+$p.ExitCode);foreach($w in [AotWindowsTest]::Windows($p.Id)){Write-Host ("WINDOW "+[AotWindowsTest]::Class($w)+" "+[AotWindowsTest]::Text($w));foreach($c in [AotWindowsTest]::Children($w)){Write-Host ("CHILD "+[AotWindowsTest]::Class($c)+" "+[AotWindowsTest]::Text($c))}}};throw "Timed out: $Name"')
+          $after=@'
+            $okButton=[AotWindowsTest]::GetDlgItem($errorWindow,1)
+            Write-Host ('DIALOG '+$errorWindow+' button='+$okButton+' enabled='+[AotWindowsTest]::IsWindowEnabled($okButton))
+            [AotWindowsTest]::PostMessage($errorWindow,0x111,[IntPtr]1,$okButton)|Out-Null
+            $exited=$p.WaitForExit(15000)
+            Write-Host ('FAULT '+$fault[0]+' exited='+$exited+' actual='+$p.ExitCode+' expected='+$fault[1])
+            Check ($fault[0]+' exits with documented error') ($exited -and $p.ExitCode -eq $fault[1])
+          '@
+          if(-not $text.Contains($before)){throw 'Diagnostic source anchor mismatch'}
+          $text=$text.Replace($before,$after)
           Set-Content -Encoding utf8 $file $text
           ./tools/test-win32-aot.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-error-diagnostic
+          path: validation/win32/windows-runtime-results.json
+          retention-days: 3
