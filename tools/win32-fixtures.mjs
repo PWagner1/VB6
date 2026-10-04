@@ -79,21 +79,36 @@ End Sub
   control('CommandButton','Command3',2700,900).properties.Caption='Allow close';
   control('ListBox','List1',300,1500,2100,1200).properties.List=['one','two'];
   control('ComboBox','Combo1',2700,1500).properties.List=['first','second'];
+  const frame=control('Frame','Frame1',300,3000,6600,2500);frame.properties.Caption='Native parent';
+  const nested=control('Frame','Frame2',300,300,5000,1800);nested.parent='Frame1';nested.properties.Caption='Nested native parent';
+  const nestedButton=control('CommandButton','NestedButton',300,450);nestedButton.parent='Frame2';nestedButton.properties.Caption='Nested event';
   f.code=`Option Explicit
 Private RejectClose As Boolean
 Private Counter As Long
+Private InitializeCount As Long
+Private LoadCount As Long
+Private Sub Form_Initialize()
+    InitializeCount = InitializeCount + 1
+    ' Self UI access must not recursively allocate the default form instance.
+    Caption = "Initialized native window"
+End Sub
 Private Sub Form_Load()
+    LoadCount = LoadCount + 1
     RejectClose = True
     Counter = 41
 End Sub
 Private Sub Command1_Click()
     Counter = Counter + 1
+    If InitializeCount <> 1 Or LoadCount <> 1 Then End
     Text1.Text = CStr(Counter)
     Caption = "Counter " & CStr(Counter)
     List1.AddItem "item " & CStr(Counter)
     Combo1.ListIndex = 1
 End Sub
 Private Sub Command2_Click()
+    If Form2.InitialValue() <> 9 Then End
+    If Form2.Initialized <> 1 Then End
+    If Form2.Loads <> 0 Then End
     Form2.Show vbModal, Me
     Text1.Text = "Modal returned"
 End Sub
@@ -106,15 +121,44 @@ End Sub
 Private Sub MenuHello_Click()
     Text1.Text = "Native menu"
 End Sub
+Private Sub NestedButton_Click()
+    Text1.Text = "Nested native frame"
+End Sub
 `;
-  f.form.menus=[{name:'MenuFile',parent:null,properties:{Caption:'&File',Visible:-1,Enabled:-1}},{name:'MenuHello',parent:'MenuFile',properties:{Caption:'&Hello',Visible:-1,Enabled:-1}}];
+  f.form.menus=[{id:'menu-file',type:'Menu',name:'MenuFile',parent:null,properties:{Caption:'&File',Visible:-1,Enabled:-1}},{id:'menu-hello',type:'Menu',name:'MenuHello',parent:'MenuFile',properties:{Caption:'&Hello',Visible:-1,Enabled:-1}}];
   const dialog=createForm('Form2','AOT modal window');dialog.form.properties.BorderStyle=3;
   dialog.form.controls=[createControl('CommandButton','CloseButton')];dialog.form.controls[0].properties.Caption='Close';
-  dialog.code='Option Explicit\nPrivate Sub CloseButton_Click()\n Unload Me\nEnd Sub';gui.modules.push(dialog);
+  dialog.code=`Option Explicit
+Public Initialized As Long
+Public Loads As Long
+Private Value As Long
+Private Sub Form_Initialize()
+    Initialized = Initialized + 1
+    Value = 9
+End Sub
+Private Sub Form_Load()
+    Loads = Loads + 1
+    If Initialized <> 1 Then End
+End Sub
+Public Function InitialValue() As Long
+    InitialValue = Value
+End Function
+Private Sub CloseButton_Click()
+    Unload Me
+End Sub`;gui.modules.push(dialog);
   const mdi=newProject('AotMDI'),parent=mdi.modules[0];parent.form.type='MDIForm';parent.form.properties.Caption='AOT native MDI';
   parent.code='Option Explicit\nPrivate Sub MDIForm_Load()\n Form2.Show\n Form3.Show\nEnd Sub';
   for(const [name,caption] of [['Form2','First MDI child'],['Form3','Second MDI child']]){const child=createForm(name,caption);Object.assign(child.form.properties,{MDIChild:-1,ClientWidth:3300,ClientHeight:2400});child.form.controls=[createControl('CommandButton','Command1')];child.form.controls[0].properties.Caption='Update';child.code='Option Explicit\nPrivate Sub Command1_Click()\n Caption = "Native MDI event"\nEnd Sub';mdi.modules.push(child);}
-  return [arithmetic,gui,mdi];
+  const faults = [
+    ['AotOverflow',6,'Dim n As Long\n n = 2147483647\n n = n + 1'],
+    ['AotDivideZero',11,'Dim n As Long\n n = 42 \\ 0'],
+    ['AotTextOverflow',6,'Dim n As Long\n n = CLng("2147483648")'],
+    ['AotTextMismatch',13,'Dim n As Long\n n = CLng("not a number")']
+  ].map(([name,error,code])=>{
+    const p=newProject(name);p.startup='Sub Main';p.nativeTestError=error;
+    p.modules=[{id:name,name:'MainModule',kind:'module',code:'Option Explicit\nPublic Sub Main()\n'+code+'\nEnd Sub'}];return p;
+  });
+  return [arithmetic,gui,mdi,...faults];
 }
 export async function emitWin32Fixtures(out='validation/win32') {
   await fs.mkdir(out,{recursive:true});const evidence=[];

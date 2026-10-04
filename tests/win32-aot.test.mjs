@@ -90,3 +90,37 @@ test('Win32 file build emits actual MZ bytes and refuses to replace an existing 
   await assert.rejects(buildWin32({project:input,out}),/exist/i);
   }finally{await fs.rm(out,{recursive:true,force:true});}
 });
+test('qualified calls respect private procedure and Declare scope',()=>{
+  for(const target of ['Private Sub Hidden()\nEnd Sub','Private Declare Sub Hidden Lib "kernel32" Alias "Beep" ()']){
+    const p=newProject();p.modules[0].code='Private Sub Form_Load()\n Module1.Hidden\nEnd Sub';
+    p.modules.push({id:'m',name:'Module1',kind:'module',code:target});
+    assert.throws(()=>compileWin32(p),/Private native procedure/);
+  }
+});
+test('native declarations cannot shadow procedure or storage names',()=>{
+  for(const declaration of ['Private Sub CallMe()\nEnd Sub','Private CallMe As Long']){
+    assert.throws(()=>buildCode('Private Declare Sub CallMe Lib "x" ()\n'+declaration),/conflicts/);
+  }
+});
+test('form initializers and default-instance method calls have distinct guarded initialization',()=>{
+  const p=win32Fixtures()[1], result=compileWin32(p);
+  const map=result.report.sourceMap.filter(e=>e.procedure==='Form_Initialize');assert.ok(map.length);
+  const text=Buffer.from(result.bytes);assert.ok(text.includes(Buffer.from('Initialized native window','utf16le')));
+});
+test('invalid hWnd, form images and unsupported scale modes fail compilation',()=>{
+  const p=newProject();p.modules[0].form.controls.push(createControl('Timer','Timer1'));
+  p.modules[0].code='Private Sub Form_Load()\n Dim n As Long\n n = Timer1.hWnd\nEnd Sub';assert.throws(()=>compileWin32(p),/Timer has no hWnd/);
+  for(const props of [{ScaleMode:2},{Picture:'x.bmp'},{Icon:'x.ico'}]){const form=newProject();Object.assign(form.modules[0].form.properties,props);assert.throws(()=>compileWin32(form),/ScaleMode|picture\/icon/);}
+});
+test('pixel and twip ScaleWidth lower to distinct explicit coordinate policies',()=>{
+  const p=newProject();p.modules[0].code='Private Sub Form_Resize()\n Dim n As Long\n n = ScaleWidth\nEnd Sub';
+  const twips=compileWin32(p);p.modules[0].form.properties.ScaleMode=3;const pixels=compileWin32(p);
+  const section=r=>r.report.sections.find(s=>s.name==='.text');assert.equal(section(twips).size-section(pixels).size,3);
+});
+
+test('Frame controls retain native parent handles and forward their notifications',()=>{
+  const p=win32Fixtures()[1],result=compileWin32(p),symbols=result.report.imports.map(i=>i.symbol);
+  assert.ok(symbols.includes('SetWindowLongW'));assert.ok(symbols.includes('CallWindowProcW'));
+  // The importer accepts declaration order that places children before their parents.
+  const reversed=structuredClone(p);reversed.modules[0].form.controls.reverse();assert.ok(compileWin32(reversed).bytes.length);
+});

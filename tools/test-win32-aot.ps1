@@ -57,6 +57,11 @@ try {
  [AotWindowsTest]::PostMessage($window,0x111,[IntPtr]10000,[IntPtr]::Zero)|Out-Null
  Until { [AotWindowsTest]::Text($text) -eq 'Native menu' } 'native menu event'
  Check 'native menu command' $true
+ $outerFrame=[AotWindowsTest]::GetDlgItem($window,106);$innerFrame=[AotWindowsTest]::GetDlgItem($outerFrame,107);$nestedButton=[AotWindowsTest]::GetDlgItem($innerFrame,108)
+ Check 'nested controls have actual Frame parent HWNDs' ([AotWindowsTest]::IsWindow($nestedButton) -and [AotWindowsTest]::GetParent($nestedButton) -eq $innerFrame -and [AotWindowsTest]::GetParent($innerFrame) -eq $outerFrame)
+ [AotWindowsTest]::PostMessage($nestedButton,0xf5,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
+ Until { [AotWindowsTest]::Text($text) -eq 'Nested native frame' } 'nested control command forwarding'
+ Check 'native Frame forwards child events without flattening parentage' $true
  [AotWindowsTest]::PostMessage($window,0x10,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null;Start-Sleep -Milliseconds 200
  Check 'QueryUnload cancels native close' ([AotWindowsTest]::IsWindow($window))
  [AotWindowsTest]::PostMessage([AotWindowsTest]::GetDlgItem($window,102),0xf5,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
@@ -86,6 +91,14 @@ try {
  [AotWindowsTest]::PostMessage($frame,0x10,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
  Check 'MDI frame shutdown' ($mdi.WaitForExit(15000))
  Check 'MDI exit code' ($mdi.ExitCode -eq 0)
+ foreach($fault in @(@('AotOverflow',6),@('AotDivideZero',11),@('AotTextOverflow',6),@('AotTextMismatch',13))) {
+  $p=Launch $fault[0];$script:errorWindow=[IntPtr]::Zero
+  Until { $script:errorWindow=([AotWindowsTest]::Windows($p.Id)|Where-Object { [AotWindowsTest]::Class($_) -eq '#32770' }|Select-Object -First 1);$script:errorWindow -and [AotWindowsTest]::IsWindowVisible($script:errorWindow) } ('runtime diagnostic '+$fault[0])
+  $text=@([AotWindowsTest]::Children($errorWindow)|ForEach-Object { [AotWindowsTest]::Text($_) }) -join ' '
+  Check ($fault[0]+' error message') ($text.Contains('Run-time error '+$fault[1]))
+  [AotWindowsTest]::PostMessage([AotWindowsTest]::GetDlgItem($errorWindow,1),0xf5,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
+  Check ($fault[0]+' exits with documented error') ($p.WaitForExit(15000) -and $p.ExitCode -eq $fault[1])
+ }
  $report=@{ok=$true;architecture=$env:PROCESSOR_ARCHITECTURE;checks=$checks}
 } catch { $report=@{ok=$false;checks=$checks;error=$_.ToString()};throw }
 finally {

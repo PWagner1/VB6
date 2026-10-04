@@ -27,7 +27,8 @@
     "test:native": "node --test tests/native-*.test.mjs",
     "fixtures:native": "node tools/native-fixtures.mjs",
     "build:win32": "node tools/build-win32.mjs",
-    "test:win32": "node --test tests/win32-*.test.mjs"
+    "test:win32": "node --test tests/win32-*.test.mjs",
+    "test:win32:browser": "python tools/browser-native-build-tests.py"
   },
   "engines": {
     "node": ">=22"

@@ -2,18 +2,8 @@
 (()=>{'use strict';
 const __modules=[];
 
-/* ../language/errors.js */
-__modules[0]=(()=>{
-
-class VBError extends Error {
-  constructor(message, number = 5, source = null, line = 0, column = 0) { super(message); this.name = 'VBError'; this.number = number; this.source = source; this.line = line; this.column = column; }
-}
-
-return {VBError};
-})();
-
 /* ../core/window-context.js */
-__modules[1]=(()=>{
+__modules[0]=(()=>{
 
 /** Documents belonging to one live IDE session. No global DOM monkey-patching. */
 const documents = new Set();
@@ -45,8 +35,8 @@ return {registerUIDocument,uiDocuments,uiDocument,hasUIDialog};
 })();
 
 /* ../core/core.js */
-__modules[2]=(()=>{
-const {uiDocument}=__modules[1];
+__modules[1]=(()=>{
+const {uiDocument}=__modules[0];
 
 /** Small framework-independent primitives shared by the IDE and runtime. */
 class Signal {
@@ -107,114 +97,19 @@ const VERSION = '0.6.0';
 return {Signal,History,clone,lower,escapeHTML,debounce,download,el,safeName,VERSION};
 })();
 
-/* ../runtime/constants.js */
-__modules[3]=(()=>{
+/* ../language/errors.js */
+__modules[2]=(()=>{
 
-/** Shared immutable compiler/runtime intrinsic constants. */
-const VB_CONSTANTS = {
-  vbTrue:-1,vbFalse:0,vbCr:'\r',vbLf:'\n',vbCrLf:'\r\n',vbNewLine:'\r\n',vbTab:'\t',vbNullChar:'\0',vbNullString:'',vbBack:'\b',vbFormFeed:'\f',vbVerticalTab:'\v',
-  vbBlack:0,vbRed:255,vbGreen:65280,vbYellow:65535,vbBlue:16711680,vbMagenta:16711935,vbCyan:16776960,vbWhite:16777215,
-  vbButtonFace:-2147483633,vbWindowBackground:-2147483643,vbWindowText:-2147483640,vbButtonText:-2147483630,
-  vbOKOnly:0,vbOKCancel:1,vbAbortRetryIgnore:2,vbYesNoCancel:3,vbYesNo:4,vbRetryCancel:5,vbCritical:16,vbQuestion:32,vbExclamation:48,vbInformation:64,vbDefaultButton1:0,vbDefaultButton2:256,vbDefaultButton3:512,
-  vbOK:1,vbCancel:2,vbAbort:3,vbRetry:4,vbIgnore:5,vbYes:6,vbNo:7,vbModal:1,vbModeless:0,
-  vbCascade:0,vbTileHorizontal:1,vbTileVertical:2,vbArrangeIcons:3,vbNormal:0,vbMinimized:1,vbMaximized:2,vbFormControlMenu:0,vbFormCode:1,vbFormMDIForm:4,vbResBitmap:0,vbResIcon:1,vbResCursor:2,vbEmpty:0,vbNull:1,vbInteger:2,vbLong:3,vbSingle:4,vbDouble:5,vbCurrency:6,vbDate:7,vbString:8,vbObject:9,vbError:10,vbBoolean:11,vbVariant:12,vbDecimal:14,vbByte:17,vbArray:8192,
-  vbMethod:1,vbGet:2,vbLet:4,vbSet:8,vbUseSystem:0,vbFirstJan1:1,vbFirstFourDays:2,vbFirstFullWeek:3,
-  vbBinaryCompare:0,vbTextCompare:1,vbUseCompareOption:-1,vbUpperCase:1,vbLowerCase:2,vbProperCase:3,vbSunday:1,vbMonday:2,vbTuesday:3,vbWednesday:4,vbThursday:5,vbFriday:6,vbSaturday:7,
-  vbTwips:1,vbPoints:2,vbPixels:3,vbCharacters:4,vbInches:5,vbMillimeters:6,vbCentimeters:7,vbUser:0,
-  vbUnchecked:0,vbChecked:1,vbGrayed:2,vbNormal:0,vbMinimized:1,vbMaximized:2,vbLeftJustify:0,vbRightJustify:1,vbCenter:2,
-  vbKeyBack:8,vbKeyTab:9,vbKeyReturn:13,vbKeyShift:16,vbKeyControl:17,vbKeyMenu:18,vbKeyEscape:27,vbKeySpace:32,vbKeyPageUp:33,vbKeyPageDown:34,vbKeyEnd:35,vbKeyHome:36,vbKeyLeft:37,vbKeyUp:38,vbKeyRight:39,vbKeyDown:40,vbKeyInsert:45,vbKeyDelete:46,
-  vbObjectError:-2147221504,adOpenForwardOnly:0,adOpenKeyset:1,adOpenDynamic:2,adOpenStatic:3,adLockReadOnly:1,adLockOptimistic:3,adUseClient:3,adStateClosed:0,adStateOpen:1,adVarChar:200,adInteger:3,adDouble:5,adSmallInt:2,adSingle:4,adCurrency:6,adDate:7,adBoolean:11,adUnsignedTinyInt:17,adVarWChar:202,adLongVarWChar:203,adEditNone:0,adEditInProgress:1,adEditAdd:2,adFilterNone:0,adAffectCurrent:1,adGetRowsRest:-1,adPosUnknown:-1,adPosBOF:-2,adPosEOF:-3,
-  rtfRTF:0,rtfText:1,rtfLeft:0,rtfRight:1,rtfCenter:2,rtfJustify:3,rtfWholeWord:2,rtfMatchCase:4,rtfNoHighlight:8,
-  tvwChild:4,lvwIcon:0,lvwSmallIcon:1,lvwList:2,lvwReport:3,ccFixedSingle:1,ccFlat:0,cc3D:1,sbrText:0,
-};
-for(let i=0;i<26;i++)VB_CONSTANTS['vbKey'+String.fromCharCode(65+i)]=65+i;
-for(let i=1;i<=16;i++)VB_CONSTANTS['vbKeyF'+i]=111+i;
-Object.freeze(VB_CONSTANTS);
-
-return {VB_CONSTANTS};
-})();
-
-/* ../runtime/decimal.js */
-__modules[4]=(()=>{
-const {VBError}=__modules[0];
-
-const MAX=(1n<<96n)-1n;
-const abs=n=>n<0n?-n:n;
-const ten=n=>10n**BigInt(n);
-function rounded(n,d){if(d===0n)throw new VBError('Division by zero',11);const negative=(n<0n)!==(d<0n);n=abs(n);d=abs(d);let q=n/d,r=n%d;if(r*2n>d||r*2n===d&&q%2n!==0n)q++;return negative?-q:q;}
-function fit(raw,scale){
-  if(!Number.isInteger(scale)||scale<0||scale>4096)throw new VBError('Invalid Decimal scale',5);
-  // Each candidate rounds the original coefficient, never a previously rounded
-  // value: repeated one-digit reduction produces incorrect double rounding.
-  for(let drop=Math.max(0,scale-28);drop<=scale;drop++){
-    const value=drop?rounded(raw,ten(drop)):raw;
-    if(abs(value)<=MAX){raw=value;scale-=drop;while(scale>0&&raw%10n===0n){raw/=10n;scale--;}return [raw,scale];}
-  }
-  throw new VBError('Overflow',6);
-}
-function parse(value){
-  if(value instanceof VBDecimal)return [value.coefficient,value.scale];
-  if(value===undefined)return [0n,0];
-  if(value===null)throw new VBError('Invalid use of Null',94);
-  if(typeof value==='boolean')return [value?-1n:0n,0];
-  if(typeof value==='bigint')return fit(value,0);
-  if(typeof value==='number'){
-    if(!Number.isFinite(value))throw new VBError('Overflow',6);
-    // OLE Double-to-Decimal conversion uses fifteen significant decimal digits.
-    value=value.toPrecision(15);
-  }
-  if(typeof value!=='string')throw new VBError('Type mismatch',13);
-  if(value.length>4096)throw new VBError('Decimal input exceeds conversion limit',7);
-  const m=value.trim().match(/^([+-]?)(\d+(?:\.\d*)?|\.\d+)(?:[eEdD]([+-]?\d+))?$/);
-  if(!m)throw new VBError('Type mismatch',13);
-  const parts=m[2].split('.'),digits=(parts.join('').replace(/^0+/,'')||'0'),exponent=Number(m[3]||0);
-  if(digits==='0')return [0n,0];
-  if(!Number.isSafeInteger(exponent))throw new VBError('Overflow',6);
-  let scale=(parts[1]?.length||0)-exponent,raw=BigInt(digits)*(m[1]==='-'?-1n:1n);
-  if(scale<0){if(digits.length-scale>29)throw new VBError('Overflow',6);raw*=ten(-scale);scale=0;}
-  if(scale-digits.length>28)return [0n,0];
-  return fit(raw,scale);
-}
-/** Immutable Variant/Decimal: a signed coefficient with 96 magnitude bits and
- * 0..28 decimal places. Arithmetic and comparisons never pass through Number. */
-class VBDecimal {
-  constructor(value=0){[this.coefficient,this.scale]=parse(value);Object.freeze(this);}
-  static fromParts(coefficient,scale){const d=Object.create(VBDecimal.prototype);[d.coefficient,d.scale]=fit(BigInt(coefficient),scale);return Object.freeze(d);}
-  static fromBytes(bytes){
-    if(!(bytes instanceof Uint8Array)||bytes.length!==16)throw new VBError('Invalid Decimal payload length',5);
-    const v=new DataView(bytes.buffer,bytes.byteOffset,16),scale=v.getUint8(2),sign=v.getUint8(3);
-    if(scale>28||(sign!==0&&sign!==128))throw new VBError('Invalid Decimal payload',5);
-    const raw=(BigInt(v.getUint32(4,true))<<64n)|v.getBigUint64(8,true);
-    return VBDecimal.fromParts(sign?-raw:raw,scale);
-  }
-  toBytes(){const bytes=new Uint8Array(16),v=new DataView(bytes.buffer),raw=abs(this.coefficient);v.setUint8(2,this.scale);v.setUint8(3,this.coefficient<0n?128:0);v.setUint32(4,Number(raw>>64n),true);v.setBigUint64(8,raw&((1n<<64n)-1n),true);return bytes;}
-  toString(){const negative=this.coefficient<0n,n=abs(this.coefficient).toString().padStart(this.scale+1,'0');return (negative?'-':'')+(this.scale?n.slice(0,-this.scale)+'.'+n.slice(-this.scale):n);}
-  valueOf(){return Number(this.coefficient)/10**this.scale;}
-  toJSON(){return {__decimal:this.toString()};}
-  negate(){return VBDecimal.fromParts(-this.coefficient,this.scale);}
-  absolute(){return this.coefficient<0n?this.negate():this;}
-  integer(floor=false){let q=this.coefficient/ten(this.scale);if(floor&&this.coefficient<0n&&this.coefficient%ten(this.scale)!==0n)q--;return VBDecimal.fromParts(q,0);}
-  roundedInteger(){return rounded(this.coefficient,ten(this.scale));}
-  round(digits=0){if(!Number.isInteger(digits)||digits<0||digits>28)throw new VBError('Invalid procedure call',5);return digits>=this.scale?this:VBDecimal.fromParts(rounded(this.coefficient,ten(this.scale-digits)),digits);}
-  compare(other){other=new VBDecimal(other);const a=this.coefficient*ten(other.scale),b=other.coefficient*ten(this.scale);return a<b?-1:a>b?1:0;}
-  add(other){other=new VBDecimal(other);const scale=Math.max(this.scale,other.scale);return VBDecimal.fromParts(this.coefficient*ten(scale-this.scale)+other.coefficient*ten(scale-other.scale),scale);}
-  subtract(other){return this.add(new VBDecimal(other).negate());}
-  multiply(other){other=new VBDecimal(other);return VBDecimal.fromParts(this.coefficient*other.coefficient,this.scale+other.scale);}
-  divide(other){
-    other=new VBDecimal(other);if(other.coefficient===0n)throw new VBError('Division by zero',11);
-    // Pick the maximum representable precision directly from the exact ratio.
-    const numerator=this.coefficient*ten(other.scale),denominator=other.coefficient*ten(this.scale);
-    for(let scale=28;scale>=0;scale--){const raw=rounded(numerator*ten(scale),denominator);if(abs(raw)<=MAX)return VBDecimal.fromParts(raw,scale);}
-    throw new VBError('Overflow',6);
-  }
+class VBError extends Error {
+  constructor(message, number = 5, source = null, line = 0, column = 0) { super(message); this.name = 'VBError'; this.number = number; this.source = source; this.line = line; this.column = column; }
 }
 
-return {VBDecimal};
+return {VBError};
 })();
 
 /* ../runtime/calendar.js */
-__modules[5]=(()=>{
-const {VBError}=__modules[0];
+__modules[3]=(()=>{
+const {VBError}=__modules[2];
 /** Gregorian/OLE DATE support. Numeric dates encode civil time, not UTC instants.
  * System-default week settings deliberately use the documented invariant defaults
  * (Sunday / week containing January 1); no Windows NLS API is available here.
@@ -291,9 +186,9 @@ return {validateDate,dateOrdinal,dateToSerial,serialToDate,asDate,dateAdd,dateDi
 })();
 
 /* ../language/lexer.js */
-__modules[6]=(()=>{
-const {asDate}=__modules[5];
-const {VBError}=__modules[0];
+__modules[4]=(()=>{
+const {asDate}=__modules[3];
+const {VBError}=__modules[2];
 
 /** VB lexical scanner. Tokens retain original source offsets for editor/debugger use. */
 
@@ -384,12 +279,90 @@ function logicalLines(source) {
 return {tokenize,splitTop,logicalLines,VBError};
 })();
 
+/* ../runtime/decimal.js */
+__modules[5]=(()=>{
+const {VBError}=__modules[2];
+
+const MAX=(1n<<96n)-1n;
+const abs=n=>n<0n?-n:n;
+const ten=n=>10n**BigInt(n);
+function rounded(n,d){if(d===0n)throw new VBError('Division by zero',11);const negative=(n<0n)!==(d<0n);n=abs(n);d=abs(d);let q=n/d,r=n%d;if(r*2n>d||r*2n===d&&q%2n!==0n)q++;return negative?-q:q;}
+function fit(raw,scale){
+  if(!Number.isInteger(scale)||scale<0||scale>4096)throw new VBError('Invalid Decimal scale',5);
+  // Each candidate rounds the original coefficient, never a previously rounded
+  // value: repeated one-digit reduction produces incorrect double rounding.
+  for(let drop=Math.max(0,scale-28);drop<=scale;drop++){
+    const value=drop?rounded(raw,ten(drop)):raw;
+    if(abs(value)<=MAX){raw=value;scale-=drop;while(scale>0&&raw%10n===0n){raw/=10n;scale--;}return [raw,scale];}
+  }
+  throw new VBError('Overflow',6);
+}
+function parse(value){
+  if(value instanceof VBDecimal)return [value.coefficient,value.scale];
+  if(value===undefined)return [0n,0];
+  if(value===null)throw new VBError('Invalid use of Null',94);
+  if(typeof value==='boolean')return [value?-1n:0n,0];
+  if(typeof value==='bigint')return fit(value,0);
+  if(typeof value==='number'){
+    if(!Number.isFinite(value))throw new VBError('Overflow',6);
+    // OLE Double-to-Decimal conversion uses fifteen significant decimal digits.
+    value=value.toPrecision(15);
+  }
+  if(typeof value!=='string')throw new VBError('Type mismatch',13);
+  if(value.length>4096)throw new VBError('Decimal input exceeds conversion limit',7);
+  const m=value.trim().match(/^([+-]?)(\d+(?:\.\d*)?|\.\d+)(?:[eEdD]([+-]?\d+))?$/);
+  if(!m)throw new VBError('Type mismatch',13);
+  const parts=m[2].split('.'),digits=(parts.join('').replace(/^0+/,'')||'0'),exponent=Number(m[3]||0);
+  if(digits==='0')return [0n,0];
+  if(!Number.isSafeInteger(exponent))throw new VBError('Overflow',6);
+  let scale=(parts[1]?.length||0)-exponent,raw=BigInt(digits)*(m[1]==='-'?-1n:1n);
+  if(scale<0){if(digits.length-scale>29)throw new VBError('Overflow',6);raw*=ten(-scale);scale=0;}
+  if(scale-digits.length>28)return [0n,0];
+  return fit(raw,scale);
+}
+/** Immutable Variant/Decimal: a signed coefficient with 96 magnitude bits and
+ * 0..28 decimal places. Arithmetic and comparisons never pass through Number. */
+class VBDecimal {
+  constructor(value=0){[this.coefficient,this.scale]=parse(value);Object.freeze(this);}
+  static fromParts(coefficient,scale){const d=Object.create(VBDecimal.prototype);[d.coefficient,d.scale]=fit(BigInt(coefficient),scale);return Object.freeze(d);}
+  static fromBytes(bytes){
+    if(!(bytes instanceof Uint8Array)||bytes.length!==16)throw new VBError('Invalid Decimal payload length',5);
+    const v=new DataView(bytes.buffer,bytes.byteOffset,16),scale=v.getUint8(2),sign=v.getUint8(3);
+    if(scale>28||(sign!==0&&sign!==128))throw new VBError('Invalid Decimal payload',5);
+    const raw=(BigInt(v.getUint32(4,true))<<64n)|v.getBigUint64(8,true);
+    return VBDecimal.fromParts(sign?-raw:raw,scale);
+  }
+  toBytes(){const bytes=new Uint8Array(16),v=new DataView(bytes.buffer),raw=abs(this.coefficient);v.setUint8(2,this.scale);v.setUint8(3,this.coefficient<0n?128:0);v.setUint32(4,Number(raw>>64n),true);v.setBigUint64(8,raw&((1n<<64n)-1n),true);return bytes;}
+  toString(){const negative=this.coefficient<0n,n=abs(this.coefficient).toString().padStart(this.scale+1,'0');return (negative?'-':'')+(this.scale?n.slice(0,-this.scale)+'.'+n.slice(-this.scale):n);}
+  valueOf(){return Number(this.coefficient)/10**this.scale;}
+  toJSON(){return {__decimal:this.toString()};}
+  negate(){return VBDecimal.fromParts(-this.coefficient,this.scale);}
+  absolute(){return this.coefficient<0n?this.negate():this;}
+  integer(floor=false){let q=this.coefficient/ten(this.scale);if(floor&&this.coefficient<0n&&this.coefficient%ten(this.scale)!==0n)q--;return VBDecimal.fromParts(q,0);}
+  roundedInteger(){return rounded(this.coefficient,ten(this.scale));}
+  round(digits=0){if(!Number.isInteger(digits)||digits<0||digits>28)throw new VBError('Invalid procedure call',5);return digits>=this.scale?this:VBDecimal.fromParts(rounded(this.coefficient,ten(this.scale-digits)),digits);}
+  compare(other){other=new VBDecimal(other);const a=this.coefficient*ten(other.scale),b=other.coefficient*ten(this.scale);return a<b?-1:a>b?1:0;}
+  add(other){other=new VBDecimal(other);const scale=Math.max(this.scale,other.scale);return VBDecimal.fromParts(this.coefficient*ten(scale-this.scale)+other.coefficient*ten(scale-other.scale),scale);}
+  subtract(other){return this.add(new VBDecimal(other).negate());}
+  multiply(other){other=new VBDecimal(other);return VBDecimal.fromParts(this.coefficient*other.coefficient,this.scale+other.scale);}
+  divide(other){
+    other=new VBDecimal(other);if(other.coefficient===0n)throw new VBError('Division by zero',11);
+    // Pick the maximum representable precision directly from the exact ratio.
+    const numerator=this.coefficient*ten(other.scale),denominator=other.coefficient*ten(this.scale);
+    for(let scale=28;scale>=0;scale--){const raw=rounded(numerator*ten(scale),denominator);if(abs(raw)<=MAX)return VBDecimal.fromParts(raw,scale);}
+    throw new VBError('Overflow',6);
+  }
+}
+
+return {VBDecimal};
+})();
+
 /* ../runtime/values.js */
-__modules[7]=(()=>{
-const {VBDecimal}=__modules[4];
-const {asDate,dateToSerial}=__modules[5];
-const { VBError }=__modules[6];
-const { lower }=__modules[2];
+__modules[6]=(()=>{
+const {VBDecimal}=__modules[5];
+const {asDate,dateToSerial}=__modules[3];
+const { VBError }=__modules[4];
+const { lower }=__modules[1];
 
 
 function bankersRound(n) { if(!Number.isFinite(n))throw new VBError('Overflow',6);const floor=Math.floor(n), f=n-floor;return f===0.5?(floor%2===0?floor:floor+1):Math.round(n); }
@@ -581,12 +554,392 @@ function describe(value){if(value instanceof VBErrorValue)return value.toString(
 return {bankersRound,NOTHING,MISSING,VBErrorValue,explicitErrorValue,VBInterfaceView,objectIdentity,objectSupports,interfaceView,isNothing,truth,numeric,decimal,vbString,roundRatio,VBCurrency,makeRecord,cloneValue,defaultValue,coerce,Cell,LazyCell,Ref,VBArray,VBCollection,VBDictionary,unary,binary,describe,VBDecimal};
 })();
 
-/* ../language/binding.js */
+/* ../runtime/binary-codec.js */
+__modules[7]=(()=>{
+const {VBError}=__modules[4];
+const {VBArray,VBCurrency,VBDecimal,VBErrorValue,NOTHING,coerce,numeric,vbString,Cell,makeRecord : buildRecord}=__modules[6];
+
+
+// Classic VB files use an ANSI code page. This browser runtime explicitly uses
+// Windows-1252 rather than silently writing UTF-8 or host-locale-dependent bytes.
+const c1=[0x20AC,0x81,0x201A,0x192,0x201E,0x2026,0x2020,0x2021,0x2C6,0x2030,0x160,0x2039,0x152,0x8D,0x17D,0x8F,0x90,0x2018,0x2019,0x201C,0x201D,0x2022,0x2013,0x2014,0x2DC,0x2122,0x161,0x203A,0x153,0x9D,0x17E,0x178];
+const charCodes=Array.from({length:256},(_,i)=>i>=128&&i<160?c1[i-128]:i);
+const encodeMap=new Map(charCodes.map((code,i)=>[String.fromCharCode(code),i]));
+function encodeANSI(text){return Uint8Array.from(String(text),c=>{const b=encodeMap.get(c);if(b===undefined)throw new VBError('Character is not representable in the Windows-1252 file encoding',5);return b;});}
+function decodeANSI(bytes){let result='';for(let i=0;i<bytes.length;i+=8192)result+=String.fromCharCode(...Array.from(bytes.subarray(i,i+8192),byte=>charCodes[byte]));return result;}
+const TYPES={byte:[1,'Uint8'],integer:[2,'Int16'],long:[4,'Int32'],single:[4,'Float32'],double:[8,'Float64'],boolean:[2,'Int16'],date:[8,'Float64'],currency:[8,'BigInt64']};
+const VARTYPES={0:'Empty',1:'Null',2:'Integer',3:'Long',4:'Single',5:'Double',6:'Currency',7:'Date',8:'String',10:'Error',11:'Boolean',14:'Decimal',17:'Byte'};
+const MAX_BYTES=20*1024*1024;
+
+/** Builds a typed UDT value with non-enumerable field metadata. */
+function makeRecord(name,fields){return buildRecord(name,fields);}
+function recordLength(value){
+  if(!value?.__fields)throw new VBError('User-defined type required',13);
+  let n=0;
+  for(const [,cell]of value.__fields){const v=cell.get(),type=String(cell.type).toLowerCase();if(v?.__fields)n+=recordLength(v);else if(v instanceof VBArray){for(const element of v.data)n+=element?.__fields?recordLength(element):TYPES[v.type.toLowerCase()]?.[0]||String(element??'').length;}else if(type==='string')n+=cell.fixedLength??String(v??'').length;else if(TYPES[type])n+=TYPES[type][0];else if(type==='variant')n+=16;else throw new VBError('Unsupported record field: '+cell.type,458);}
+  return n;
+}
+class Writer {
+  constructor(){this.chunks=[];this.length=0;}
+  write(bytes){if(this.length+bytes.length>MAX_BYTES)throw new VBError('Binary record exceeds 20 MiB limit',7);this.chunks.push(bytes);this.length+=bytes.length;}
+  number(type,value){const [size,method]=TYPES[type],bytes=new Uint8Array(size);new DataView(bytes.buffer)['set'+method](0,value,true);this.write(bytes);}
+  finish(){const bytes=new Uint8Array(this.length);let p=0;for(const b of this.chunks){bytes.set(b,p);p+=b.length;}return bytes;}
+}
+class Reader {
+  constructor(bytes){this.bytes=bytes;this.position=0;}
+  read(length){if(!Number.isInteger(length)||length<0||this.position+length>this.bytes.length)throw new VBError('Input past end of file',62);const result=this.bytes.subarray(this.position,this.position+length);this.position+=length;return result;}
+  number(type){const [size,method]=TYPES[type],b=this.read(size);return new DataView(b.buffer,b.byteOffset,b.byteLength)['get'+method](0,true);}
+}
+function variantType(value){if(value instanceof VBDecimal)return 14;if(value instanceof VBErrorValue)return 10;if(value===undefined)return 0;if(value===null)return 1;if(value instanceof VBCurrency)return 6;if(value instanceof Date)return 7;if(typeof value==='string')return 8;if(typeof value==='boolean')return 11;if(typeof value==='number')return 5;throw new VBError('Cannot serialize objects or scalar Variants containing arrays',458);}
+function* arrayIndices(bounds){if(!bounds.length)return;const idx=bounds.map(([l])=>l);while(true){yield [...idx];let d=0;for(;d<bounds.length;d++){if(++idx[d]<=bounds[d][1])break;idx[d]=bounds[d][0];}if(d===bounds.length)break;}}
+function put(writer,value,schema,mode,inRecord=false,depth=0){
+  if(depth>32)throw new VBError('Record nesting exceeds runtime limit',7);
+  const type=String(schema.type||'Variant').toLowerCase();
+  if(value instanceof VBArray){
+    if(!schema.isArray)throw new VBError('Scalar Variant containing an array is not supported by Put',458);
+    if(!value.bounds.length)throw new VBError('Subscript out of range',9);
+    if(value.dynamic&&(mode==='random'||inRecord)){writer.number('integer',value.bounds.length);for(const [lo,hi]of value.bounds){writer.number('long',hi-lo+1);writer.number('long',lo);}}
+    for(const indices of arrayIndices(value.bounds))put(writer,value.get(...indices),{type:value.type,fixedLength:value.fixedLength},mode,inRecord,depth+1);
+    return;
+  }
+  if(value?.__fields){for(const [,cell]of value.__fields)put(writer,cell.get(),cell,mode,true,depth+1);return;}
+  if(value===NOTHING||type==='object')throw new VBError('Objects cannot be written with Put',458);
+  if(type==='variant'){const kind=variantType(value);writer.number('integer',kind);if(kind<2)return;put(writer,value,{type:VARTYPES[kind]},mode,kind===8||inRecord,depth+1);return;}
+  if(type==='decimal'){writer.write(coerce(value,'Decimal').toBytes());return;}
+  if(type==='error'){writer.number('long',value.number);return;}
+  if(type==='string'){
+    const text=coerce(value,'String',schema.fixedLength),bytes=encodeANSI(text);
+    if(schema.fixedLength==null&&(mode==='random'||inRecord)){if(bytes.length>65535)throw new VBError('String exceeds 16-bit record descriptor',63);writer.number('integer',bytes.length>32767?bytes.length-65536:bytes.length);}
+    writer.write(bytes);return;
+  }
+  if(!TYPES[type])throw new VBError('Unsupported file data type: '+schema.type,458);
+  const coerced=coerce(value,type);
+  writer.number(type,type==='currency'?coerced.raw:type==='date'?numeric(coerced):coerced);
+}
+function get(reader,schema,current,mode,inRecord=false,depth=0){
+  if(depth>32)throw new VBError('Record nesting exceeds runtime limit',7);
+  const type=String(schema.type||'Variant').toLowerCase();
+  if(current instanceof VBArray||schema.isArray){
+    if(!schema.isArray)throw new VBError('Scalar Variant containing an array is not supported by Get',458);
+    let bounds=current?.bounds||[],dynamic=current?.dynamic??true,elementType=current?.type||schema.elementType||'Variant';
+    if(dynamic&&(mode==='random'||inRecord)){
+      const rank=reader.number('integer');if(rank<1||rank>32)throw new VBError('Invalid array descriptor',63);
+      bounds=[];for(let i=0;i<rank;i++){const size=reader.number('long'),lower=reader.number('long');if(size<1)throw new VBError('Invalid array descriptor',63);bounds.push([lower,lower+size-1]);}
+    }
+    if(!bounds.length)throw new VBError('Dimension the array before Binary Get',9);
+    const result=new VBArray(bounds,elementType,current?.elementFactory,current?.fixedLength);result.dynamic=dynamic;
+    for(const idx of arrayIndices(bounds))result.set(idx,get(reader,{type:elementType,fixedLength:current?.fixedLength},result.get(...idx),mode,inRecord,depth+1));
+    return result;
+  }
+  if(current?.__fields){const fields=new Map();for(const [name,cell]of current.__fields){const value=get(reader,cell,cell.get(),mode,true,depth+1),next=new Cell(cell.type,value,false,cell.fixedLength);next.isArray=cell.isArray;next.elementType=cell.elementType;fields.set(name,next);}return makeRecord(current.__type,fields);}
+  if(type==='object'||current===NOTHING)throw new VBError('Objects cannot be read with Get',458);
+  if(type==='variant'){
+    const kind=reader.number('integer');if(kind===0)return undefined;if(kind===1)return null;if(!VARTYPES[kind])throw new VBError('Unsupported Variant file descriptor: '+kind,458);
+    return get(reader,{type:VARTYPES[kind]},undefined,mode,kind===8||inRecord,depth+1);
+  }
+  if(type==='decimal')return VBDecimal.fromBytes(reader.read(16));
+  if(type==='error')return new VBErrorValue(reader.number('long'));
+  if(type==='string'){
+    const length=schema.fixedLength??((mode==='random'||inRecord)?reader.number('integer')&65535:vbString(current).length);
+    return decodeANSI(reader.read(length));
+  }
+  if(!TYPES[type])throw new VBError('Unsupported file data type: '+schema.type,458);
+  const value=reader.number(type);return type==='currency'?new VBCurrency(value,true):coerce(value,type);
+}
+function encodeVariable(value,schema={},mode='binary'){const writer=new Writer();put(writer,value,schema,mode);return writer.finish();}
+function decodeVariable(bytes,schema={},current,mode='binary'){const reader=new Reader(bytes),value=get(reader,schema,current,mode);return {value,bytesRead:reader.position};}
+
+return {encodeANSI,decodeANSI,makeRecord,recordLength,encodeVariable,decodeVariable};
+})();
+
+/* ../project/frx.js */
 __modules[8]=(()=>{
-const {VBError}=__modules[0];
-const {lower}=__modules[2];
-const {VB_CONSTANTS}=__modules[3];
-const {VBCurrency,coerce,unary,binary}=__modules[7];
+const {VBError}=__modules[4];
+const {encodeANSI,decodeANSI}=__modules[7];
+/** Bounded FRX records; no COM deserialization, native code, or remote resource loads. */
+
+
+const MAX_RESOURCE_BYTES=20*1024*1024;
+const fail=message=>{throw new VBError('FRX: '+message,1002);};
+function cleanProjectPath(path){
+  path=String(path).replace(/\\/g,'/');if(!path||/^[\/]|^[a-z]:|\0/i.test(path))fail('unsafe project path: '+path);
+  const out=[];for(const part of path.split('/')){if(!part||part==='.')continue;if(part==='..'){if(!out.length)fail('path escapes project root: '+path);out.pop();}else out.push(part);}if(!out.length)fail('empty project path');return out.join('/');
+}
+function relativeProjectPath(fromFile,toFile){const a=cleanProjectPath(fromFile).split('/');a.pop();const b=cleanProjectPath(toFile).split('/');while(a.length&&b.length&&a[0].toLowerCase()===b[0].toLowerCase()){a.shift();b.shift();}return [...a.map(()=> '..'),...b].join('\\');}
+function resolveProjectPath(paths,owner,reference,{basenameFallback=false}={}){
+  if(/^[\\/]|^[a-z]:|\0/i.test(String(reference)))fail('unsafe resource reference: '+reference);
+  const names=[...paths],parent=String(owner||'').replace(/\\/g,'/').split('/').slice(0,-1).join('/');
+  const candidate=cleanProjectPath((parent?parent+'/':'')+reference),matches=names.filter(n=>n.toLowerCase()===candidate.toLowerCase());
+  if(matches.length>1)fail('ambiguous case-insensitive file: '+candidate);if(matches.length)return matches[0];
+  if(basenameFallback){const base=String(reference).replace(/\\/g,'/').split('/').at(-1).toLowerCase(),found=names.filter(n=>n.split('/').at(-1).toLowerCase()===base);if(found.length>1)fail('ambiguous file name: '+reference);return found[0]||null;}return null;
+}
+function fromBase64(data){if(typeof data!=='string'||data.length>MAX_RESOURCE_BYTES*4/3+8)fail('invalid or oversized base64 resource');let binary;try{binary=atob(data);}catch{fail('invalid base64');}return Uint8Array.from(binary,c=>c.charCodeAt(0));}
+function toBase64(bytes){if(bytes.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');let result='';for(let at=0;at<bytes.length;at+=8192)result+=String.fromCharCode(...bytes.subarray(at,at+8192));return btoa(result);}
+function view(bytes){return new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);}
+function range(bytes,offset,length){if(!Number.isInteger(offset)||!Number.isInteger(length)||offset<0||length<0||offset+length>bytes.length)fail('truncated record or out-of-range offset');}
+function resourceOffset(value){if(typeof value==='number'){if(Number.isInteger(value)&&value>=0)return value;}else if(/^[0-9a-f]{1,8}$/i.test(value||''))return parseInt(value,16);fail('invalid hexadecimal resource offset');}
+/** Decode only the record identified by the property; never guess by scanning untrusted bytes. */
+function readFRXRecord(input,offset,property='Text'){
+  const bytes=input instanceof Uint8Array?input:new Uint8Array(input);if(bytes.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');offset=resourceOffset(offset);range(bytes,offset,1);const v=view(bytes),remaining=bytes.length-offset;
+  if(property==='List'){
+    range(bytes,offset,4);const count=v.getUint16(offset,true),signature=v.getUint16(offset+2,true);if(![3,7].includes(signature))fail('unsupported list signature');let cursor=offset+4;const items=[];
+    for(let i=0;i<count;i++){range(bytes,cursor,2);const size=v.getUint16(cursor,true);cursor+=2;range(bytes,cursor,size);items.push(decodeANSI(bytes.subarray(cursor,cursor+size)));cursor+=size;}return {kind:'list',items,signature,bytesRead:cursor-offset};
+  }
+  if(remaining>=12&&v.getUint32(offset+4,true)===0x746c){const size=v.getUint32(offset,true),payload=v.getUint32(offset+8,true);if(size!==payload+8)fail('inconsistent picture lengths');range(bytes,offset+12,payload);return {kind:'picture',bytes:bytes.slice(offset+12,offset+12+payload),bytesRead:12+payload};}
+  let header=1,length=bytes[offset],kind='text8';
+  if(property==='LongText'||bytes[offset]===255&&remaining>=4&&v.getUint32(offset,true)===remaining-4){range(bytes,offset,4);header=4;length=v.getUint32(offset,true);kind='text32';}
+  else if(bytes[offset]===255){range(bytes,offset,3);header=3;length=v.getUint16(offset+1,true);kind='text16';}
+  else if(remaining>=4&&bytes.subarray(offset,offset+4).includes(0)){header=4;length=v.getUint32(offset,true);kind='text32';}
+  range(bytes,offset+header,length);return {kind,bytes:bytes.slice(offset+header,offset+header+length),bytesRead:header+length};
+}
+function writeFRXRecord(value,kind='text32',{signature=3}={}){
+  if(kind==='list'){
+    if(!Array.isArray(value)||value.length>65535)fail('list must contain at most 65,535 items');const encoded=value.map(item=>encodeANSI(String(item)));for(const b of encoded)if(b.length>65535)fail('list item exceeds 65,535 bytes');const size=4+encoded.reduce((n,b)=>n+2+b.length,0);if(size>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const out=new Uint8Array(size),v=view(out);v.setUint16(0,value.length,true);v.setUint16(2,[3,7].includes(signature)?signature:3,true);let at=4;for(const b of encoded){v.setUint16(at,b.length,true);out.set(b,at+2);at+=2+b.length;}return out;
+  }
+  const bytes=kind==='picture'?new Uint8Array(value):encodeANSI(String(value));if(bytes.length>MAX_RESOURCE_BYTES-12)fail('resource exceeds 20 MiB limit');let header=kind==='picture'?12:kind==='text8'&&bytes.length<255?1:kind==='text16'&&bytes.length<=65535?3:4;const out=new Uint8Array(header+bytes.length),v=view(out);if(header===12){v.setUint32(0,bytes.length+8,true);v.setUint32(4,0x746c,true);v.setUint32(8,bytes.length,true);}else if(header===4)v.setUint32(0,bytes.length,true);else if(header===3){out[0]=255;v.setUint16(1,bytes.length,true);}else out[0]=bytes.length;out.set(bytes,header);return out;
+}
+function rasterDataURL(input){
+  let bytes=input,mime='';const b=bytes,v=view(bytes),starts=hex=>hex.every((n,i)=>b[i]===n);
+  if(starts([137,80,78,71,13,10,26,10]))mime='image/png';
+  else if(starts([255,216,255]))mime='image/jpeg';
+  else if(starts([71,73,70,56])&&[55,57].includes(b[4])&&b[5]===97)mime='image/gif';
+  else if(starts([66,77]))mime='image/bmp';
+  else if(starts([0,0,1,0]))mime='image/x-icon';
+  else if(b.length>=40&&[40,108,124].includes(v.getUint32(0,true))){
+    const header=v.getUint32(0,true),bits=v.getUint16(14,true),compression=v.getUint32(16,true);if(![1,4,8,16,24,32].includes(bits)||![0,3,6].includes(compression))return null;
+    const colors=v.getUint32(32,true)||(bits<=8?1<<bits:0),extra=header===40?(compression===3?12:compression===6?16:0):0,pixelOffset=14+header+colors*4+extra;
+    if(colors>256||pixelOffset>bytes.length+14)return null;const bmp=new Uint8Array(bytes.length+14),w=view(bmp);w.setUint16(0,0x4d42,true);w.setUint32(2,bmp.length,true);w.setUint32(10,pixelOffset,true);bmp.set(bytes,14);bytes=bmp;mime='image/bmp';
+  }
+  return mime?'data:'+mime+';base64,'+toBase64(bytes):null;
+}
+function rasterBytes(url){const match=String(url).match(/^data:image\/(?:png|jpeg|gif|bmp|x-icon|vnd\.microsoft\.icon);base64,([A-Za-z0-9+/=]+)$/i);if(!match)fail('native Picture export requires an embedded PNG, JPEG, GIF, BMP, or ICO');const bytes=fromBase64(match[1]);if(!rasterDataURL(bytes))fail('unsupported raster signature');return bytes;}
+const TEXT_PROPERTIES=new Set(['text','caption','tooltiptext','textrtf','linktopic','tag']);
+function hydrateResources(project,diagnostics=[]){
+  const cache=new Map(),paths=Object.keys(project.assets||{});
+  for(const module of project.modules){if(!module.form)continue;for(const node of [module.form,...module.form.controls,...module.form.menus])for(const [key,reference]of Object.entries(node.properties||{})){
+    if(!reference?.resource)continue;try{
+      const path=resolveProjectPath(paths,module.sourcePath||module.name+'.frm',reference.resource);
+      if(!path)fail('missing resource file '+reference.resource);if(!cache.has(path))cache.set(path,fromBase64(project.assets[path].data));
+      const lower=key.toLowerCase();if(!TEXT_PROPERTIES.has(lower)&&!['list','picture','icon','mouseicon'].includes(lower))fail('property '+key+' is retained as an opaque resource');
+      const record=readFRXRecord(cache.get(path),reference.offset,lower==='list'?'List':reference.text?'LongText':key);let value;
+      if(lower==='list')value=record.items;else if(['picture','icon','mouseicon'].includes(lower)){if(record.kind!=='picture')fail('picture header not supported');value=rasterDataURL(record.bytes);if(!value)fail('native/OLE/metafile picture retained; no raster browser decoder');}
+      else {if(record.kind==='picture')fail('text references a picture record');value=decodeANSI(record.bytes);}
+      node.resourceBindings ||= {};node.resourceBindings[key]={reference:{...reference},assetPath:path,kind:record.kind,signature:record.signature,originalValue:structuredClone(value)};node.properties[key]=value;
+    }catch(error){diagnostics.push({severity:'warning',source:module.name,message:node.name+'.'+key+': '+error.message+' (original bytes and reference retained).'});}
+  }}return project;
+}
+/** Native export is copy-on-write: original blobs never move; edited entries append. */
+function prepareResources(project){
+  const modules=structuredClone(project.modules),files={};for(const [path,asset]of Object.entries(project.assets||{})){cleanProjectPath(path);if(asset.encoding==='base64')files[path]=fromBase64(asset.data);}
+  const append=(path,value,kind,options)=>{path=cleanProjectPath(path);const record=writeFRXRecord(value,kind,options),before=files[path]||new Uint8Array();if(before.length+record.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const all=new Uint8Array(before.length+record.length);all.set(before);all.set(record,before.length);files[path]=all;return before.length.toString(16).toUpperCase().padStart(4,'0');};
+  for(const module of modules){if(!module.form)continue;const source=module.sourcePath||module.name+'.frm';for(const node of [module.form,...module.form.controls,...module.form.menus])for(const [key,value]of Object.entries(node.properties||{})){
+    if(value?.resource)continue;const binding=node.resourceBindings?.[key],same=binding&&JSON.stringify(value)===JSON.stringify(binding.originalValue);if(same){node.properties[key]=binding.reference;continue;}
+    const lower=key.toLowerCase(),picture=['picture','icon','mouseicon'].includes(lower),list=lower==='list'&&Array.isArray(value),text=TEXT_PROPERTIES.has(lower)&&typeof value==='string';
+    if(!binding&&!list&&!(picture&&value)&&!(text&&(/[\r\n]/.test(value)||value.length>255)))continue;
+    if(picture&&!value){delete node.properties[key];continue;}if(!list&&!picture&&!text)fail('cannot serialize edited opaque resource '+node.name+'.'+key);
+    const path=binding?.assetPath||source.replace(/\.frm$/i,'.frx'),kind=picture?'picture':list?'list':binding?.kind||'text32',offset=append(path,picture?rasterBytes(value):value,kind,{signature:binding?.signature});
+    node.properties[key]={resource:relativeProjectPath(source,path),offset,...(text?{text:true}:{})};
+  }}return {modules,files};
+}
+
+return {MAX_RESOURCE_BYTES,cleanProjectPath,relativeProjectPath,resolveProjectPath,fromBase64,toBase64,resourceOffset,readFRXRecord,writeFRXRecord,rasterDataURL,rasterBytes,hydrateResources,prepareResources};
+})();
+
+/* ../project/res.js */
+__modules[9]=(()=>{
+const {VBError}=__modules[4];
+const {cleanProjectPath,fromBase64,toBase64,MAX_RESOURCE_BYTES}=__modules[8];
+/** Windows 32-bit .res containers. Payloads remain opaque unless explicitly edited. */
+
+
+const RESOURCE_TYPES=Object.freeze({1:'Cursor',2:'Bitmap',3:'Icon',4:'Menu',5:'Dialog',6:'String',7:'Font directory',8:'Font',9:'Accelerator',10:'Custom data',11:'Message table',12:'Cursor group',14:'Icon group',16:'Version',24:'Manifest'});
+const resourceKey=entry=>JSON.stringify([entry.type,entry.name,entry.language||0]);
+const fail=message=>{throw new VBError('RES: '+message,1002);};
+const align=n=>Math.ceil(n/4)*4;
+function uint(value,bits,label){if(!Number.isInteger(value)||value<0||value>2**bits-1)fail('Invalid '+label);return value;}
+function identifier(value){if(typeof value==='number')return uint(value,16,'resource identifier');if(typeof value!=='string'||!value||value.length>1024||value.includes('\0')||value.charCodeAt(0)===65535)fail('Invalid resource name');return value;}
+function signature(entry){return JSON.stringify([entry.type,entry.name,entry.language,entry.flags,entry.dataVersion,entry.version,entry.characteristics,entry.data]);}
+function normalizeResources(model){
+  if(!model||!Array.isArray(model.entries)||model.entries.length>10000)fail('Expected up to 10,000 resource entries');
+  let total=32;const seen=new Set(),entries=model.entries.map(input=>{
+    if(!input||typeof input.data!=='string')fail('Missing resource data');
+    if(input.data.length>MAX_RESOURCE_BYTES*4/3+4)fail('Resource exceeds 20 MiB');
+    const entry={type:identifier(input.type),name:identifier(input.name),language:uint(input.language??0,16,'language'),flags:uint(input.flags??0x30,16,'memory flags'),dataVersion:uint(input.dataVersion??0,32,'data version'),version:uint(input.version??0,32,'version'),characteristics:uint(input.characteristics??0,32,'characteristics'),data:toBase64(fromBase64(input.data))};
+    if(entry.type===0&&entry.name===0&&!entry.data)fail('Null resource is a container header, not an entry');
+    total+=Math.ceil(entry.data.length*3/4)+64+(typeof entry.type==='string'?entry.type.length*2:0)+(typeof entry.name==='string'?entry.name.length*2:0);if(total>MAX_RESOURCE_BYTES)fail('Resource file exceeds 20 MiB');
+    const key=resourceKey(entry);if(seen.has(key))fail('Duplicate resource type, name and language');seen.add(key);return entry;
+  });
+  const result={fileName:cleanProjectPath(model.fileName||'Project.res'),entries};
+  if(!/\.res$/i.test(result.fileName))fail('Resource file name must end in .res');
+  if(model.original!==undefined){if(typeof model.original!=='string'||model.original.length>MAX_RESOURCE_BYTES*4/3+4)fail('Invalid original resource file');result.original=model.original;}
+  return result;
+}
+function parse(bytes){
+  if(!(bytes instanceof Uint8Array))bytes=new Uint8Array(bytes);
+  if(bytes.length>MAX_RESOURCE_BYTES)fail('Resource file exceeds 20 MiB');
+  if(bytes.length<32)fail('Truncated or non-Win32 resource container');
+  const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),records=[];let offset=0;
+  while(offset<bytes.length){
+    if(offset%4||offset+8>bytes.length)fail('Truncated or misaligned header');
+    const start=offset,size=view.getUint32(start,true),headerSize=view.getUint32(start+4,true),headerEnd=start+headerSize;
+    if(headerSize<24||headerSize%4||headerEnd>bytes.length||size>bytes.length-headerEnd)fail('Invalid resource header or payload bounds');
+    let at=start+8;
+    const readName=()=>{if(at+2>headerEnd)fail('Truncated identifier');let word=view.getUint16(at,true);at+=2;if(word===65535){if(at+2>headerEnd)fail('Truncated ordinal');word=view.getUint16(at,true);at+=2;return word;}let text='';while(word){text+=String.fromCharCode(word);if(text.length>1024||at+2>headerEnd)fail('Unterminated or oversized name');word=view.getUint16(at,true);at+=2;}return text;};
+    const type=readName(),name=readName();at=align(at);if(at+16>headerEnd)fail('Missing fixed header fields');
+    const entry={type,name,dataVersion:view.getUint32(at,true),flags:view.getUint16(at+4,true),language:view.getUint16(at+6,true),version:view.getUint32(at+8,true),characteristics:view.getUint32(at+12,true),data:toBase64(bytes.subarray(headerEnd,headerEnd+size))};
+    const end=align(headerEnd+size);if(end>bytes.length)fail('Truncated data alignment padding');
+    records.push({entry,start,end});if(records.length>10001)fail('More than 10,000 resources');offset=end;
+  }
+  const prefix=records[0];if(!prefix||prefix.entry.type!==0||prefix.entry.name!==0||prefix.entry.data!=='')fail('Missing Win32 null-resource header');
+  return {records:records.slice(1),prefix};
+}
+function readRES(bytes,fileName='Project.res'){
+  bytes=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);const parsed=parse(bytes);
+  return normalizeResources({fileName,entries:parsed.records.map(r=>r.entry),original:toBase64(bytes)});
+}
+function recordBytes(entry){
+  const nameLength=value=>typeof value==='number'?4:(value.length+1)*2;
+  const fixed=align(8+nameLength(entry.type)+nameLength(entry.name)),headerSize=fixed+16,data=fromBase64(entry.data),out=new Uint8Array(align(headerSize+data.length)),view=new DataView(out.buffer);
+  view.setUint32(0,data.length,true);view.setUint32(4,headerSize,true);let at=8;
+  for(const value of [entry.type,entry.name]){if(typeof value==='number'){view.setUint16(at,65535,true);view.setUint16(at+2,value,true);at+=4;}else{for(let i=0;i<value.length;i++){view.setUint16(at,value.charCodeAt(i),true);at+=2;}at+=2;}}
+  view.setUint32(fixed,entry.dataVersion,true);view.setUint16(fixed+4,entry.flags,true);view.setUint16(fixed+6,entry.language,true);view.setUint32(fixed+8,entry.version,true);view.setUint32(fixed+12,entry.characteristics,true);out.set(data,headerSize);return out;
+}
+function writeRES(model){
+  model=normalizeResources(model);let original,parsed;
+  if(model.original){original=fromBase64(model.original);parsed=parse(original);}
+  const old=new Map((parsed?.records||[]).map(r=>[resourceKey(r.entry),r]));
+  if(parsed&&parsed.records.length===model.entries.length&&parsed.records.every((r,i)=>signature(r.entry)===signature(model.entries[i])))return original.slice();
+  const nullEntry={type:0,name:0,language:0,flags:0,dataVersion:0,version:0,characteristics:0,data:''};
+  const chunks=[parsed?original.slice(0,parsed.prefix.end):recordBytes(nullEntry)];
+  for(const entry of model.entries){const prior=old.get(resourceKey(entry));chunks.push(prior&&signature(prior.entry)===signature(entry)?original.slice(prior.start,prior.end):recordBytes(entry));}
+  const length=chunks.reduce((n,c)=>n+c.length,0);if(length>MAX_RESOURCE_BYTES)fail('Resource file exceeds 20 MiB');const out=new Uint8Array(length);let at=0;for(const chunk of chunks){out.set(chunk,at);at+=chunk.length;}return out;
+}
+function decodeStringTable(bytes){
+  bytes=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),strings=[];let at=0;
+  for(let slot=0;slot<16;slot++){if(at+2>bytes.length)fail('Truncated string-table length');const length=view.getUint16(at,true);at+=2;if(at+length*2>bytes.length)fail('Truncated string-table text');let value='';for(let i=0;i<length;i++)value+=String.fromCharCode(view.getUint16(at+i*2,true));strings.push(value);at+=length*2;}
+  if(at!==bytes.length)fail('Trailing bytes in string-table block');return strings;
+}
+function encodeStringTable(strings){
+  if(!Array.isArray(strings)||strings.length!==16||strings.some(s=>typeof s!=='string'||s.length>65535))fail('Expected sixteen strings, each at most 65,535 UTF-16 code units');
+  const bytes=new Uint8Array(32+strings.reduce((n,s)=>n+s.length*2,0)),view=new DataView(bytes.buffer);let at=0;
+  for(const s of strings){view.setUint16(at,s.length,true);at+=2;for(let i=0;i<s.length;i++){view.setUint16(at,s.charCodeAt(i),true);at+=2;}}return bytes;
+}
+/** Pure transactions: validation failure never mutates the source resource model. */
+function setResource(model,entry,{replace=true}={}){
+  const next=normalizeResources(model||{entries:[]});entry=normalizeResources({entries:[entry]}).entries[0];const index=next.entries.findIndex(e=>resourceKey(e)===resourceKey(entry));if(index>=0){if(!replace)fail('Resource already exists');next.entries[index]=entry;}else next.entries.push(entry);return normalizeResources(next);
+}
+function removeResource(model,key){const next=normalizeResources(model);next.entries=next.entries.filter(e=>resourceKey(e)!==key);return next;}
+function setResourceString(model,id,text,language=0){
+  id=uint(id,16,'string ID');language=uint(language,16,'language');if(typeof text!=='string'||text.length>65535)fail('Invalid string value');
+  const next=normalizeResources(model||{entries:[]}),name=(id>>4)+1,prior=next.entries.find(e=>e.type===6&&e.name===name&&e.language===language),strings=prior?decodeStringTable(fromBase64(prior.data)):Array(16).fill('');strings[id&15]=text;
+  return setResource(next,{...prior,type:6,name,language,data:toBase64(encodeStringTable(strings))});
+}
+function listResourceStrings(model){const result=[];for(const entry of model?.entries||[])if(entry.type===6&&Number.isInteger(entry.name)&&entry.name>=1&&entry.name<=4096){const strings=decodeStringTable(fromBase64(entry.data));strings.forEach((text,slot)=>{if(text)result.push({id:(entry.name-1)*16+slot,text,language:entry.language,key:resourceKey(entry)});});}return result;}
+
+return {RESOURCE_TYPES,resourceKey,normalizeResources,readRES,writeRES,decodeStringTable,encodeStringTable,setResource,removeResource,setResourceString,listResourceStrings};
+})();
+
+/* ../project/model.js */
+__modules[10]=(()=>{
+const { clone, lower, safeName }=__modules[1];
+const {normalizeResources}=__modules[9];
+const { VBError }=__modules[4];
+
+
+
+const PROJECT_SCHEMA=1;
+let sequence=0;
+const newId=()=>`id_${Date.now().toString(36)}_${(++sequence).toString(36)}`;
+const BASIC_CONTROL_TYPES=['Pointer','PictureBox','Label','TextBox','Frame','CommandButton','CheckBox','OptionButton','ComboBox','ListBox','HScrollBar','VScrollBar','Timer','DriveListBox','DirListBox','FileListBox','Shape','Line','Image','Data','OLE'];
+const EXTENDED_CONTROL_TYPES=['TreeView','ListView','ProgressBar','Slider','StatusBar','Toolbar','TabStrip','SSTab','RichTextBox','MSFlexGrid','MSHFlexGrid','DataGrid','DTPicker','MonthView','UpDown','ImageList','CommonDialog','MSChart'];
+const CONTROL_DEFAULTS={
+  Label:{Caption:'Label',Width:1440,Height:300,BackStyle:0,Alignment:0},TextBox:{BackColor:-2147483643,Text:'',Width:1800,Height:315,MultiLine:0,ScrollBars:0,MaxLength:0,PasswordChar:'',Locked:0,Alignment:0},CommandButton:{Caption:'Command',Width:1440,Height:420,Default:0,Cancel:0},Frame:{Caption:'Frame',Width:3300,Height:1800},CheckBox:{Caption:'Check',Value:0,Width:1800,Height:300},OptionButton:{Caption:'Option',Value:0,Width:1800,Height:300},ComboBox:{BackColor:-2147483643,Text:'',List:[],Width:2100,Height:315,Style:0,ListIndex:-1},ListBox:{BackColor:-2147483643,List:[],Width:2400,Height:1800,ListIndex:-1,MultiSelect:0,Sorted:0},PictureBox:{Width:2400,Height:1800,BackColor:-2147483633,ScaleMode:3,AutoRedraw:-1,BorderStyle:1},Image:{Width:1440,Height:1440,Stretch:-1},Shape:{Width:1440,Height:900,Shape:0,FillStyle:1,FillColor:16777215,BorderColor:0},Line:{Width:1440,Height:15,BorderColor:0,BorderWidth:1},Timer:{Interval:1000,Enabled:0,Width:420,Height:420},HScrollBar:{Width:2400,Height:255,Min:0,Max:32767,Value:0,SmallChange:1,LargeChange:100},VScrollBar:{Width:255,Height:2400,Min:0,Max:32767,Value:0,SmallChange:1,LargeChange:100},ProgressBar:{Width:2700,Height:315,Min:0,Max:100,Value:30},Slider:{Width:2700,Height:450,Min:0,Max:10,Value:3,TickFrequency:1},TreeView:{BackColor:-2147483643,Width:2700,Height:2100,LineStyle:1},ListView:{BackColor:-2147483643,Width:3600,Height:2100,View:3,FullRowSelect:-1,GridLines:0},StatusBar:{Width:5400,Height:315,SimpleText:'Ready',Style:1},Toolbar:{Width:5400,Height:450},TabStrip:{Width:4500,Height:2400},SSTab:{Width:4500,Height:2400,Tab:0,Tabs:3},RichTextBox:{BackColor:-2147483643,Width:3600,Height:2100,Text:'Rich text',MultiLine:-1,ScrollBars:3},MSFlexGrid:{Width:4200,Height:2100,Rows:5,Cols:3,FixedRows:1,FixedCols:1,Row:1,Col:1},MSHFlexGrid:{Width:4200,Height:2100,Rows:5,Cols:3,FixedRows:1,FixedCols:1,Row:1,Col:1},DataGrid:{Width:4200,Height:2100,Rows:5,Cols:3},DTPicker:{BackColor:-2147483643,Width:2400,Height:330,Value:'2026-10-03',Format:0},MonthView:{BackColor:-2147483643,Width:3300,Height:2700,Value:'2026-10-03'},UpDown:{Width:255,Height:450,Min:0,Max:100,Value:0,Increment:1,Wrap:0,Orientation:0},ImageList:{Width:420,Height:420,ImageWidth:16,ImageHeight:16},CommonDialog:{Width:420,Height:420,Filter:'Text files|*.txt|All files|*.*',FileName:'',DialogTitle:'Open'},MSChart:{BackColor:-2147483643,Width:4200,Height:2550,ChartType:1,RowCount:5,ColumnCount:1},FileListBox:{BackColor:-2147483643,Width:2400,Height:1500,Pattern:'*.*',Path:'/'},DirListBox:{BackColor:-2147483643,Width:2400,Height:1500,Path:'/'},DriveListBox:{BackColor:-2147483643,Width:2400,Height:315,Drive:'C:'},Data:{Width:2400,Height:315,Caption:'Data'},OLE:{Width:1800,Height:1200,Caption:'OLE (unsupported)'}
+};
+function createControl(type,name=null,left=300,top=300){const id=newId();return {id,name:name||type+'1',type,parent:null,properties:{Name:name||type+'1',Left:left,Top:top,Width:1800,Height:450,Visible:-1,Enabled:-1,TabIndex:0,TabStop:['Label','Frame','Shape','Line','Image','StatusBar','ProgressBar','Timer','ImageList','CommonDialog'].includes(type)?0:-1,FontName:'MS Sans Serif',FontSize:8.25,FontBold:0,FontItalic:0,ForeColor:-2147483640,BackColor:-2147483633,ToolTipText:'',Tag:'',...clone(CONTROL_DEFAULTS[type]||{})}};}
+function createForm(name='Form1',caption=name){return {id:newId(),name,kind:'form',code:`Option Explicit\n\nPrivate Sub Form_Load()\n    \nEnd Sub\n`,form:{id:newId(),name,type:'Form',properties:{Name:name,Caption:caption,ClientWidth:9000,ClientHeight:6000,Width:9120,Height:6450,Left:300,Top:300,StartUpPosition:2,BorderStyle:2,BackColor:-2147483633,ForeColor:-2147483640,FontName:'MS Sans Serif',FontSize:8.25,FontBold:0,FontItalic:0,ScaleMode:1,KeyPreview:0,Visible:-1,Enabled:-1},controls:[],menus:[]}};}
+function newProject(name='Project1'){const form=createForm();return {schema:PROJECT_SCHEMA,id:newId(),name,description:'',startup:form.name,modules:[form],settings:{snapToGrid:true,gridSize:120,showGrid:true,renderer:'auto',tabWidth:4,requireVariableDeclaration:true},references:[],assets:{},vfs:{files:{},directories:['/']},appSettings:{}};}
+function validateForm(form,moduleName){
+  if(!form||typeof form!=='object'||Array.isArray(form))throw new VBError('Invalid form model: '+moduleName,1002);
+  form.id ||= newId();form.name=moduleName;form.properties ||= {};form.controls ||= [];form.menus ||= [];
+  if(!Array.isArray(form.controls)||!Array.isArray(form.menus))throw new VBError('Form controls and menus must be arrays',1002);
+  if(form.controls.length>10000||form.menus.length>10000)throw new VBError('Form exceeds 10,000-control or menu limit',7);
+  const ids=new Set(),controls=new Map(),menus=new Map(),allNames=new Set();
+  const validateNode=node=>{
+    if(!node||typeof node.name!=='string'||!/^[A-Za-z_]\w*$/.test(node.name))throw new VBError('Invalid control or menu name: '+node?.name,1002);
+    if(typeof node.type!=='string')throw new VBError('Missing control type: '+node.name,1002);
+    if(!node.id||ids.has(node.id))node.id=newId();ids.add(node.id);node.properties ||= {};
+    if(typeof node.properties!=='object'||Array.isArray(node.properties))throw new VBError('Invalid properties: '+node.name,1002);
+    for(const key of ['Left','Top','Width','Height','ClientWidth','ClientHeight'])if(node.properties[key]!==undefined){const n=Number(node.properties[key]);if(!Number.isFinite(n)||Math.abs(n)>300000||/Width|Height/.test(key)&&n<0)throw new VBError('Invalid geometry: '+node.name+'.'+key,380);node.properties[key]=n;}
+  };
+  validateNode(form);
+  for(const c of form.controls){validateNode(c);const key=lower(c.name),items=controls.get(key)||[];
+    if(c.properties.Index!==undefined){const index=Number(c.properties.Index);if(!Number.isInteger(index)||index<0||index>32767)throw new VBError('Invalid control array index: '+c.name,380);c.properties.Index=index;}
+    if(items.some(item=>item.properties.Index===undefined||c.properties.Index===undefined||item.properties.Index===c.properties.Index||item.type!==c.type))throw new VBError('Duplicate or incompatible control array name/index: '+c.name,1002);
+    items.push(c);controls.set(key,items);allNames.add(key);
+  }
+  for(const m of form.menus){validateNode(m);const key=lower(m.name);if(allNames.has(key))throw new VBError('Duplicate menu or control name: '+m.name,1002);allNames.add(key);menus.set(key,m);}
+  for(const [nodes,lookup]of [[form.controls,controls],[form.menus,menus]])for(const node of nodes){const seen=new Set([lower(node.name)]);let current=node;
+    while(current.parent){const key=lower(current.parent);if(seen.has(key))throw new VBError('Cyclic parent relationship: '+node.name,1002);seen.add(key);const result=lookup.get(key);if(!result)throw new VBError('Missing parent '+current.parent+' for '+node.name,1002);const parent=Array.isArray(result)?result[0]:result;current.parent=parent.name;current=parent;}
+  }
+}
+function normalizeProject(value){
+  if(!value||typeof value!=='object'||!Array.isArray(value.modules))throw new VBError('Not a VB6 Studio project',1002);
+  if(value.schema!==PROJECT_SCHEMA)throw new VBError('Unsupported project schema: '+value.schema,1002);
+  if(!value.modules.length||value.modules.length>1000)throw new VBError('Project must contain 1–1,000 modules',7);
+  const project=clone(value);project.id ||= newId();project.name=safeName(project.name);project.settings={...newProject().settings,...project.settings};project.references ||= [];project.assets ||= {};project.vfs ||= {files:{}};project.appSettings ||= {};
+  const names=new Set(),ids=new Set();for(const m of project.modules){
+    if(!m||typeof m.name!=='string'||!/^[A-Za-z_]\w*$/.test(m.name))throw new VBError('Invalid module name: '+m?.name,1002);
+    if(names.has(lower(m.name)))throw new VBError('Duplicate module: '+m.name,1002);names.add(lower(m.name));
+    if(!m.id||ids.has(m.id))m.id=newId();ids.add(m.id);m.kind ||= 'module';if(!['form','module','class'].includes(m.kind))throw new VBError('Unsupported module kind: '+m.kind,1002);
+    m.code=String(m.code||'');if(m.code.length>5000000)throw new VBError('Module exceeds 5,000,000-character source limit',7);
+    if(m.kind==='form'&&!m.form)throw new VBError('Form module is missing its form model: '+m.name,1002);if(m.form)validateForm(m.form,m.name);
+  }
+  if(!Number.isInteger(Number(project.settings.tabWidth))||Number(project.settings.tabWidth)<1||Number(project.settings.tabWidth)>32)project.settings.tabWidth=4;else project.settings.tabWidth=Number(project.settings.tabWidth);
+  const grid=Number(project.settings.gridSize);project.settings.gridSize=Number.isFinite(grid)?Math.max(15,Math.min(1200,grid)):120;
+  project.settings.renderer=project.settings.renderer==='canvas2d'?'canvas2d':'auto';
+  if(project.resources)project.resources=normalizeResources(project.resources);
+  return project;
+}
+function uniqueName(project,base='Form',module=null){const names=new Set(module?module.form.controls.map(c=>lower(c.name)):project.modules.map(m=>lower(m.name)));let n=1;while(names.has(lower(base+n)))n++;return base+n;}
+function findModule(project,idOrName){return project.modules.find(m=>m.id===idOrName||lower(m.name)===lower(idOrName));}
+function projectStats(project){return {modules:project.modules.length,forms:project.modules.filter(m=>m.kind==='form').length,controls:project.modules.reduce((n,m)=>n+(m.form?.controls.length||0),0),lines:project.modules.reduce((n,m)=>n+m.code.split('\n').length,0)};}
+
+return {PROJECT_SCHEMA,newId,BASIC_CONTROL_TYPES,EXTENDED_CONTROL_TYPES,CONTROL_DEFAULTS,createControl,createForm,newProject,normalizeProject,uniqueName,findModule,projectStats};
+})();
+
+/* ../runtime/constants.js */
+__modules[11]=(()=>{
+
+/** Shared immutable compiler/runtime intrinsic constants. */
+const VB_CONSTANTS = {
+  vbTrue:-1,vbFalse:0,vbCr:'\r',vbLf:'\n',vbCrLf:'\r\n',vbNewLine:'\r\n',vbTab:'\t',vbNullChar:'\0',vbNullString:'',vbBack:'\b',vbFormFeed:'\f',vbVerticalTab:'\v',
+  vbBlack:0,vbRed:255,vbGreen:65280,vbYellow:65535,vbBlue:16711680,vbMagenta:16711935,vbCyan:16776960,vbWhite:16777215,
+  vbButtonFace:-2147483633,vbWindowBackground:-2147483643,vbWindowText:-2147483640,vbButtonText:-2147483630,
+  vbOKOnly:0,vbOKCancel:1,vbAbortRetryIgnore:2,vbYesNoCancel:3,vbYesNo:4,vbRetryCancel:5,vbCritical:16,vbQuestion:32,vbExclamation:48,vbInformation:64,vbDefaultButton1:0,vbDefaultButton2:256,vbDefaultButton3:512,
+  vbOK:1,vbCancel:2,vbAbort:3,vbRetry:4,vbIgnore:5,vbYes:6,vbNo:7,vbModal:1,vbModeless:0,
+  vbCascade:0,vbTileHorizontal:1,vbTileVertical:2,vbArrangeIcons:3,vbNormal:0,vbMinimized:1,vbMaximized:2,vbFormControlMenu:0,vbFormCode:1,vbFormMDIForm:4,vbResBitmap:0,vbResIcon:1,vbResCursor:2,vbEmpty:0,vbNull:1,vbInteger:2,vbLong:3,vbSingle:4,vbDouble:5,vbCurrency:6,vbDate:7,vbString:8,vbObject:9,vbError:10,vbBoolean:11,vbVariant:12,vbDecimal:14,vbByte:17,vbArray:8192,
+  vbMethod:1,vbGet:2,vbLet:4,vbSet:8,vbUseSystem:0,vbFirstJan1:1,vbFirstFourDays:2,vbFirstFullWeek:3,
+  vbBinaryCompare:0,vbTextCompare:1,vbUseCompareOption:-1,vbUpperCase:1,vbLowerCase:2,vbProperCase:3,vbSunday:1,vbMonday:2,vbTuesday:3,vbWednesday:4,vbThursday:5,vbFriday:6,vbSaturday:7,
+  vbTwips:1,vbPoints:2,vbPixels:3,vbCharacters:4,vbInches:5,vbMillimeters:6,vbCentimeters:7,vbUser:0,
+  vbUnchecked:0,vbChecked:1,vbGrayed:2,vbNormal:0,vbMinimized:1,vbMaximized:2,vbLeftJustify:0,vbRightJustify:1,vbCenter:2,
+  vbKeyBack:8,vbKeyTab:9,vbKeyReturn:13,vbKeyShift:16,vbKeyControl:17,vbKeyMenu:18,vbKeyEscape:27,vbKeySpace:32,vbKeyPageUp:33,vbKeyPageDown:34,vbKeyEnd:35,vbKeyHome:36,vbKeyLeft:37,vbKeyUp:38,vbKeyRight:39,vbKeyDown:40,vbKeyInsert:45,vbKeyDelete:46,
+  vbObjectError:-2147221504,adOpenForwardOnly:0,adOpenKeyset:1,adOpenDynamic:2,adOpenStatic:3,adLockReadOnly:1,adLockOptimistic:3,adUseClient:3,adStateClosed:0,adStateOpen:1,adVarChar:200,adInteger:3,adDouble:5,adSmallInt:2,adSingle:4,adCurrency:6,adDate:7,adBoolean:11,adUnsignedTinyInt:17,adVarWChar:202,adLongVarWChar:203,adEditNone:0,adEditInProgress:1,adEditAdd:2,adFilterNone:0,adAffectCurrent:1,adGetRowsRest:-1,adPosUnknown:-1,adPosBOF:-2,adPosEOF:-3,
+  rtfRTF:0,rtfText:1,rtfLeft:0,rtfRight:1,rtfCenter:2,rtfJustify:3,rtfWholeWord:2,rtfMatchCase:4,rtfNoHighlight:8,
+  tvwChild:4,lvwIcon:0,lvwSmallIcon:1,lvwList:2,lvwReport:3,ccFixedSingle:1,ccFlat:0,cc3D:1,sbrText:0,
+};
+for(let i=0;i<26;i++)VB_CONSTANTS['vbKey'+String.fromCharCode(65+i)]=65+i;
+for(let i=1;i<=16;i++)VB_CONSTANTS['vbKeyF'+i]=111+i;
+Object.freeze(VB_CONSTANTS);
+
+return {VB_CONSTANTS};
+})();
+
+/* ../language/binding.js */
+__modules[12]=(()=>{
+const {VBError}=__modules[2];
+const {lower}=__modules[1];
+const {VB_CONSTANTS}=__modules[11];
+const {VBCurrency,coerce,unary,binary}=__modules[6];
 
 
 
@@ -698,8 +1051,8 @@ return {bindConstants};
 })();
 
 /* ../language/default-types.js */
-__modules[9]=(()=>{
-const {VBError}=__modules[6];
+__modules[13]=(()=>{
+const {VBError}=__modules[4];
 
 /** VB6 module-scoped default types. Later VB.NET-only integer types are not accepted. */
 const DEFAULT_TYPE_NAMES=Object.freeze({defbool:'Boolean',defbyte:'Byte',defint:'Integer',deflng:'Long',defcur:'Currency',defsng:'Single',defdbl:'Double',defdate:'Date',defstr:'String',defobj:'Object',defvar:'Variant'});
@@ -725,8 +1078,8 @@ return {DEFAULT_TYPE_NAMES,addDefaultTypes,defaultIdentifierType};
 })();
 
 /* ../language/interfaces.js */
-__modules[10]=(()=>{
-const {lower}=__modules[2];
+__modules[14]=(()=>{
+const {lower}=__modules[1];
 
 const json=x=>JSON.stringify(x);
 function shape(p){return {kind:p.kind,accessor:p.accessor,type:lower(p.returnType),params:p.params.map(a=>({type:lower(a.type),byRef:a.byRef,optional:a.optional,paramArray:a.paramArray,array:a.bounds!==null,initial:a.initial}))};}
@@ -769,8 +1122,8 @@ return {validateInterfaces};
 })();
 
 /* ../language/expression.js */
-__modules[11]=(()=>{
-const { tokenize, VBError }=__modules[6];
+__modules[15]=(()=>{
+const { tokenize, VBError }=__modules[4];
 
 const PRECEDENCE = {imp:1,eqv:2,xor:3,or:4,and:5,'=':7,'<>':7,'<':7,'>':7,'<=':7,'>=':7,is:7,like:7,'&':8,'+':9,'-':9,mod:10,'\\':11,'*':12,'/':12,'^':14};
 class ExpressionParser {
@@ -845,10 +1198,10 @@ return {ExpressionParser,parseExpression,parseCall};
 })();
 
 /* ../language/conditional.js */
-__modules[12]=(()=>{
-const { VBError }=__modules[6];
-const { parseExpression }=__modules[11];
-const { binary, unary, truth }=__modules[7];
+__modules[16]=(()=>{
+const { VBError }=__modules[4];
+const { parseExpression }=__modules[15];
+const { binary, unary, truth }=__modules[6];
 
 
 
@@ -887,14 +1240,14 @@ return {preprocess};
 })();
 
 /* ../language/compiler.js */
-__modules[13]=(()=>{
-const {bindConstants}=__modules[8];
-const {defaultIdentifierType,addDefaultTypes}=__modules[9];
-const {validateInterfaces}=__modules[10];
-const { preprocess }=__modules[12];
-const { VBError, logicalLines, splitTop, tokenize }=__modules[6];
-const { parseExpression, parseCall }=__modules[11];
-const { lower }=__modules[2];
+__modules[17]=(()=>{
+const {bindConstants}=__modules[12];
+const {defaultIdentifierType,addDefaultTypes}=__modules[13];
+const {validateInterfaces}=__modules[14];
+const { preprocess }=__modules[16];
+const { VBError, logicalLines, splitTop, tokenize }=__modules[4];
+const { parseExpression, parseCall }=__modules[15];
+const { lower }=__modules[1];
 
 
 
@@ -1097,7 +1450,7 @@ return {parseDeclarations,parseParameters,compileModule,compileProject,validateC
 })();
 
 /* ../native/pe32.js */
-__modules[14]=(()=>{
+__modules[18]=(()=>{
 
 /** Deterministic PE32 linker. Browser-safe: no Node, native compiler, or binary template. */
 const PE32_BASE = 0x400000;
@@ -1218,7 +1571,7 @@ return {PE32_BASE,BinarySection,PE32Image};
 })();
 
 /* ../native/x86.js */
-__modules[15]=(()=>{
+__modules[19]=(()=>{
 
 /** Small checked x86 assembler for the native VB backend (stdcall, 32-bit registers). */
 class X86 {
@@ -1262,10 +1615,12 @@ return {X86};
 })();
 
 /* ../native/compiler.js */
-__modules[16]=(()=>{
-const {compileProject, parseParameters}=__modules[13];
-const {PE32Image, BinarySection}=__modules[14];
-const {X86}=__modules[15];
+__modules[20]=(()=>{
+const {normalizeProject}=__modules[10];
+const {compileProject, parseParameters}=__modules[17];
+const {PE32Image, BinarySection}=__modules[18];
+const {X86}=__modules[19];
+
 
 
 
@@ -1301,7 +1656,7 @@ function extractNativeDeclarations(module) {
 
 class NativeCompiler {
   constructor(project) {
-    this.project = structuredClone(project); this.externals = new Map();
+    this.project = normalizeProject(project); this.externals = new Map();
     if (project.resources?.entries?.length) this.fail('Native resource lowering is not yet implemented; use the classic or desktop target');
     const targetType = project.nativeProject?.entries?.find(e => key(e.key) === 'type')?.value;
     if (targetType && key(targetType) !== 'exe') this.fail('Freestanding AOT currently requires a Standard EXE project');
@@ -1328,7 +1683,7 @@ class NativeCompiler {
     this.modules.set(key(module.name), result);
     for (const decl of module.declarations) {
       if (decl.constant) continue; this.scalar(decl);
-      const variable = {...decl,label:'global:' + module.name + ':' + decl.name}; this.slot(variable.label); result.globals.set(key(decl.name),variable);
+      const variable = {...decl,owner:result,label:'global:' + module.name + ':' + decl.name}; this.slot(variable.label); result.globals.set(key(decl.name),variable);
     }
     for (const proc of module.procedures.values()) {
       if (!['sub','function'].includes(proc.kind)) this.fail('Native AOT does not lower property procedures', module);
@@ -1348,10 +1703,14 @@ class NativeCompiler {
       }
       result.procedures.set(key(proc.name),context);
     }
+    for (const name of result.externals.keys()) if (result.procedures.has(name) || result.globals.has(name) || module.constantBindings.has(name)) this.fail('Native declaration conflicts with a project member: ' + name,module);
     if (!module.form) return;
     if (!['Form','MDIForm'].includes(module.form.type)) this.fail('Unsupported native form designer',module);
+    if (module.form.properties.Picture || module.form.properties.Icon) this.fail('Native form picture/icon resources are not yet lowered',module);
+    if (![1,3].includes(Number(module.form.properties.ScaleMode ?? 1))) this.fail('Native form ScaleMode currently supports Twips (1) or Pixels (3)',module);
     if (module.form.properties.KeyPreview) this.fail('Native KeyPreview is not yet lowered',module);
     result.handle = this.slot('hwnd:' + module.name); result.loaded = this.slot('loaded:' + module.name); result.create = 'create:' + module.name; result.close = 'close:' + module.name;
+    result.initialized = this.slot('initialized:' + module.name); result.initialize = 'initialize:' + module.name;
     result.client = this.slot('mdi-client:' + module.name); result.menu = this.slot('menu:' + module.name);
     result.className = this.string('VB6.Native.' + module.name);
     result.rect = 'rect:' + module.name; this.data.align(4).label(result.rect).zero(16);
@@ -1360,6 +1719,7 @@ class NativeCompiler {
       if (model.properties.Picture || model.properties.Icon) this.fail('Native picture/icon resources are not yet lowered',module);
       if (!Object.hasOwn(CLASSES,model.type) || model.properties.Index !== undefined) this.fail('Unsupported native control or control array: ' + model.type, module);
       const control = {model,module:result,id:id++,handle:this.slot('hwnd:' + module.name + ':' + model.name)};
+      if (model.type === 'Frame') control.oldProcedure=this.slot('frame-old-procedure:'+module.name+':'+model.name);
       if (model.type === 'Timer') { control.interval = this.slot('timer-interval:' + module.name + ':' + model.name,Number(model.properties.Interval) || 0); control.enabled = this.slot('timer-enabled:' + module.name + ':' + model.name,model.properties.Enabled === 0 ? 0 : -1); }
       result.controls.set(key(model.name),control);
     }
@@ -1386,7 +1746,7 @@ class NativeCompiler {
     for (const map of [c?.proc.constantBindings, c?.module.module.constantBindings, c?.module.module.importedConstantBindings, c?.module.module.globalEnumMembers]) if (map?.has(name)) return map.get(name);
     return CONSTANTS[name];
   }
-  address(variable) { if (!variable) this.fail('Expression is not an addressable scalar'); if (variable.label) this.x.value(variable.label); else if (variable.parameter && variable.byRef) this.x.value({argument:variable.offset}); else this.x.local(variable.offset); }
+  address(variable) { if (!variable) this.fail('Expression is not an addressable scalar'); if(variable.owner?.form) this.x.call(variable.owner.initialize); if (variable.label) this.x.value(variable.label); else if (variable.parameter && variable.byRef) this.x.value({argument:variable.offset}); else this.x.local(variable.offset); }
   load(variable) { this.address(variable); const type = key(variable.type); this.x.emit(...(type === 'byte' ? [0x0f,0xb6,0x00] : ['integer','boolean'].includes(type) ? [0x0f,0xbf,0x00] : [0x8b,0x00])); }
   check(type) { type = key(type); if (type === 'boolean') this.x.test().emit(0x0f,0x95,0xc0,0x0f,0xb6,0xc0,0xf7,0xd8); else if (type === 'integer') this.x.compare(-32768).branch('l','error:6').compare(32767).branch('g','error:6'); else if (type === 'byte') this.x.compare(255).branch('g','error:6').compare(0).branch('l','error:6'); }
   store(variable) { this.check(variable.type); this.x.push(); this.address(variable); this.x.emit(0x5a); const type = key(variable.type); this.x.emit(...(type === 'byte' ? [0x88,0x10] : ['integer','boolean'].includes(type) ? [0x66,0x89,0x10] : [0x89,0x10])); this.x.emit(0x89,0xd0); }
@@ -1447,7 +1807,7 @@ class NativeCompiler {
   boolean(op) { this.x.emit(0x0f,BOOL_CONDITIONS[op],0xc0,0x0f,0xb6,0xc0,0xf7,0xd8); }
   getProperty(object, property) {
     if (!object) this.fail('Unknown native object'); const x = this.x;
-    if (property === 'hwnd') { this.handle(object); return; }
+    if (property === 'hwnd') { if (object.model?.type === 'Timer') this.fail('Timer has no hWnd'); this.handle(object); return; }
     if (['text','caption'].includes(property)) {
       if (object.model?.type === 'Timer') this.fail('Timer has no text');
       const buffer = this.buffer(); this.handle(object); x.push().invoke('user32.dll','GetWindowTextLengthW').compare(4095).branch('g','error:7');
@@ -1458,7 +1818,7 @@ class NativeCompiler {
     if (property === 'value' && ['CheckBox','OptionButton'].includes(object.model?.type)) { this.ensure(object); x.api('user32.dll','SendMessageW',[mem(object.handle),0xf0,0,0]); if (object.model.type === 'OptionButton') x.emit(0xf7,0xd8); return; }
     if (['listindex','listcount'].includes(property) && ['ListBox','ComboBox'].includes(object.model?.type)) { this.ensure(object); const combo = object.model.type === 'ComboBox'; x.api('user32.dll','SendMessageW',[mem(object.handle),property === 'listindex' ? combo ? 0x147 : 0x188 : combo ? 0x146 : 0x18b,0,0]); return; }
     if (property === 'windowstate' && object.form) { const done = x.unique(), normal = x.unique(); this.ensure(object); x.api('user32.dll','IsIconic',[mem(object.handle)]).test().branch('e',normal).value(1).jump(done).label(normal).api('user32.dll','IsZoomed',[mem(object.handle)]).emit(0xd1,0xe0).label(done); return; }
-    if (['scalewidth','scaleheight'].includes(property) && object.form) { this.ensure(object); x.api('user32.dll','GetClientRect',[mem(object.handle),object.rect]).value({memory:object.rect,addend:property === 'scalewidth' ? 8 : 12}).emit(0x6b,0xc0,15); return; }
+    if (['scalewidth','scaleheight'].includes(property) && object.form) { this.ensure(object); x.api('user32.dll','GetClientRect',[mem(object.handle),object.rect]).value({memory:object.rect,addend:property === 'scalewidth' ? 8 : 12}); if(Number(object.form.properties.ScaleMode ?? 1)===1)x.emit(0x6b,0xc0,15); return; }
     this.fail('Native property is not lowered: ' + property);
   }
   setProperty(object, property, expr) {
@@ -1474,7 +1834,12 @@ class NativeCompiler {
   }
   resolveProcedure(callee) {
     const current = this.context?.module;
-    if (callee.kind === 'member' && callee.object.kind === 'id') { const m = this.modules.get(key(callee.object.name)) || (key(callee.object.name) === 'me' ? current : null); return m?.procedures.get(key(callee.name)) || m?.externals.get(key(callee.name)); }
+    if (callee.kind === 'member' && callee.object.kind === 'id') {
+      const m = this.modules.get(key(callee.object.name)) || (key(callee.object.name) === 'me' ? current : null);
+      const target = m?.procedures.get(key(callee.name)) || m?.externals.get(key(callee.name));
+      if(target && m!==current && (target.proc || target).scope!=='public')this.fail('Private native procedure is not accessible: '+callee.name);
+      return target;
+    }
     if (callee.kind !== 'id') return null;
     const name = key(callee.name), own = current?.procedures.get(name) || current?.externals.get(name); if (own) return own;
     const candidates = [...this.modules.values()].flatMap(m => [...m.procedures.values(),...m.externals.values()].filter(p => key((p.proc || p).name) === name && (p.proc || p).scope === 'public'));
@@ -1488,7 +1853,7 @@ class NativeCompiler {
     }
     if (['clng','cint','cbyte','cbool'].includes(name)) {
       if (args.length !== 1) this.fail(name + ' expects one argument');
-      if (this.type(args[0]) === 'string') { const out = this.slot(x.unique('conversion')); this.expression(args[0]); x.emit(0x89,0xc3).push(out).push(0).push(0x400).emit(0x53).invoke('oleaut32.dll','VarI4FromStr').test().branch('s','error:13').value(mem(out)); } else this.numeric(args[0]);
+      if (this.type(args[0]) === 'string') { const out = this.slot(x.unique('conversion')); this.expression(args[0]); x.emit(0x89,0xc3).push(out).push(0).push(0x400).emit(0x53).invoke('oleaut32.dll','VarI4FromStr').compare(0x8002000a).branch('e','error:6').test().branch('s','error:13').value(mem(out)); } else this.numeric(args[0]);
       this.check({clng:'Long',cint:'Integer',cbyte:'Byte',cbool:'Boolean'}[name]); return;
     }
     if (name === 'cstr') { if (args.length !== 1) this.fail('CStr expects one argument'); this.textExpression(args[0]); return; }
@@ -1499,7 +1864,7 @@ class NativeCompiler {
     if (node.callee.kind === 'member') {
       const object = this.object(node.callee.object), method = key(node.callee.name);
       if (object) {
-        this.ensure(object);
+        if (['show','hide','setfocus','additem','clear','removeitem'].includes(method)) this.ensure(object);
         if (method === 'show' && object.form) {
           if(args.length>2)this.fail('Native Show expects mode and optional owner');
           this.numeric(args[0] || lit(0));x.push();
@@ -1520,6 +1885,7 @@ class NativeCompiler {
     if (!target) this.fail('Native procedure is not available: ' + (name || node.callee.name));
     const signature = target.proc || target;
     if (args.length !== signature.params.length) this.fail('Native call argument count mismatch: ' + signature.name);
+    if(target.module?.form && target.module!==this.context.module)x.call(target.module.initialize);
     for (let i = 0; i < args.length; i++) {
       const param = signature.params[i];
       if (param.byRef) { if(args[i].kind==='group') this.fail('Parenthesized ByRef temporaries are not yet lowered'); const v = this.variable(args[i]); if (!v || key(v.type) !== key(param.type)) this.fail('ByRef native argument must be a scalar of the exact declared type'); this.address(v); }
@@ -1528,7 +1894,7 @@ class NativeCompiler {
     }
     // VB evaluates arguments left-to-right; reverse only their stack slots for stdcall.
     for (let i = 0; i < Math.floor(args.length / 2); i++) { const a = i * 4, b = (args.length - i - 1) * 4; x.emit(0x8b,0x84,0x24).imm(a).emit(0x8b,0x8c,0x24).imm(b).emit(0x89,0x8c,0x24).imm(a).emit(0x89,0x84,0x24).imm(b); }
-    if (target.proc) x.call(target.label); else { x.invoke(target.dll,target.symbol); if (key(signature.returnType) === 'integer') x.emit(0x0f,0xbf,0xc0); else if (key(signature.returnType) === 'byte') x.emit(0x0f,0xb6,0xc0); }
+    if (target.proc) x.call(target.label); else { x.invoke(target.dll,target.symbol); if (['integer','boolean'].includes(key(signature.returnType))) x.emit(0x0f,0xbf,0xc0); else if (key(signature.returnType) === 'byte') x.emit(0x0f,0xb6,0xc0); }
   }
   procedure(context) {
     this.context = context; const outer=this.x, body=new BinarySection('.body',0), x=this.x=new X86(body,this.image), code=context.proc.code, end=context.label+':return';
@@ -1621,7 +1987,10 @@ class NativeCompiler {
   }
   controls(module) {
     const x = this.x;
-    for (const control of module.controls.values()) {
+    const depth = control => {let count=0,parent=control.model.parent;while(parent){const p=module.controls.get(key(parent));if(!p||p.model.type!=='Frame'||++count>16)this.fail('Native controls currently nest only in Frames without cycles',module);parent=p.model.parent;}return count;};
+    // Build containers before their children while preserving stable control IDs.
+    const ordered=[...module.controls.values()].sort((a,b)=>depth(a)-depth(b));
+    for (const control of ordered) {
       const model = control.model, p = model.properties;
       if (model.type === 'Timer') { this.timer(control); continue; }
       let style = 0x40000000 | (p.Visible === 0 ? 0 : 0x10000000) | (p.Enabled === 0 ? 0x08000000 : 0) | (p.TabStop === 0 ? 0 : 0x10000), ex = 0;
@@ -1630,13 +1999,13 @@ class NativeCompiler {
       if (model.type === 'Label') style = style & ~0x10000 | 0x100;
       if (model.type === 'CheckBox') style |= p.TripleState ? 6 : 3;
       if (model.type === 'OptionButton') style |= 9;
-      if (model.type === 'Frame') style = style & ~0x10000 | 7;
+      if (model.type === 'Frame') style = style & ~0x10000 | 7 | 0x02000000;
       if (model.type === 'ListBox') { ex = 0x200; style |= 1 | 0x200000 | (p.Sorted ? 2 : 0); if (p.MultiSelect) this.fail('Native multi-selection ListBox is not lowered',module); }
       if (model.type === 'ComboBox') style |= 0x200000 | ([1,2].includes(Number(p.Style)) ? p.Style === 1 ? 1 : 3 : 2) | (p.Sorted ? 0x100 : 0);
-      let left = Number(p.Left || 0), top = Number(p.Top || 0), parent = model.parent, depth = 0;
-      while (parent) { const container = module.controls.get(key(parent)); if (!container || container.model.type !== 'Frame' || ++depth > 16) this.fail('Native controls currently nest only in Frames without cycles',module); left += Number(container.model.properties.Left || 0); top += Number(container.model.properties.Top || 0); parent = container.model.parent; }
+      const left = Number(p.Left || 0), top = Number(p.Top || 0), parent = model.parent ? module.controls.get(key(model.parent)) : module;
       const width = this.pixels(p.Width ?? 1440), height = this.pixels(p.Height ?? 420) + (model.type === 'ComboBox' && p.Style !== 1 ? 160 : 0);
-      x.api('user32.dll','CreateWindowExW',[ex,this.string(CLASSES[model.type]),this.string(p.Text ?? p.Caption ?? ''),style,this.pixels(left),this.pixels(top),width,height,mem(module.handle),control.id,mem('instance'),0]).test().branch('e','error:7').store(control.handle);
+      x.api('user32.dll','CreateWindowExW',[ex,this.string(CLASSES[model.type]),this.string(p.Text ?? p.Caption ?? ''),style,this.pixels(left),this.pixels(top),width,height,mem(parent.handle),control.id,mem('instance'),0]).test().branch('e','error:7').store(control.handle);
+      if (model.type === 'Frame') x.api('user32.dll','SetWindowLongW',[mem(control.handle),-4,'frame-procedure:'+module.name+':'+model.name]).test().branch('e','error:7').store(control.oldProcedure);
       x.api('gdi32.dll','GetStockObject',[17]).emit(0x89,0xc3).push(1).emit(0x53).push(0x30).push(mem(control.handle)).invoke('user32.dll','SendMessageW');
       if (model.type === 'TextBox' && p.MaxLength) x.api('user32.dll','SendMessageW',[mem(control.handle),0xc5,Number(p.MaxLength),0]);
       if (['CheckBox','OptionButton'].includes(model.type)) x.api('user32.dll','SendMessageW',[mem(control.handle),0xf1,p.Value ? 1 : 0,0]);
@@ -1672,11 +2041,16 @@ class NativeCompiler {
     const style = this.formStyle(module), ex = Number(p.BorderStyle) >= 4 ? 0x80 : 0;
     this.data.align(4).label(wc).u32(3).reference(wnd).u32(0).u32(0).u32(0).u32(0).u32(0).u32(16).u32(0).reference(module.className);
     module.wc = wc;
-    x.label(module.create).enter(); x.value(mem(module.handle)).test().branch('ne',done);
+    const initialized=x.unique();
+    // Initialize a default form instance once, before window creation. Reentrant UI
+    // access from Form_Initialize can load that form without recursively firing Initialize.
+    x.label(module.initialize).enter().value(mem(module.initialized)).test().branch('ne',initialized).value(1).store(module.initialized);
     for (const variable of module.globals.values()) {
       this.context = {module,proc:{},locals:new Map()}; if (variable.initial) this.numeric(variable.initial); else x.value(0); this.store(variable);
     }
     this.handler(module,prefix + 'Initialize');
+    x.label(initialized).value(0).leave();
+    x.label(module.create).enter().call(module.initialize).value(mem(module.handle)).test().branch('ne',done);
     this.menus(module);
     const width = this.pixels(p.ClientWidth ?? p.Width ?? 9000), height = this.pixels(p.ClientHeight ?? p.Height ?? 6000);
     x.value(0).store(module.rect).store(module.rect,4).value(width).store(module.rect,8).value(height).store(module.rect,12);
@@ -1700,6 +2074,12 @@ class NativeCompiler {
     }
     this.controls(module); x.value(1).store(module.loaded); this.handler(module,prefix + 'Load');
     x.label(done).value(mem(module.handle)).leave();
+    for(const control of module.controls.values())if(control.oldProcedure){
+      const forward=x.unique();
+      x.label('frame-procedure:'+module.name+':'+control.model.name).enter().value({argument:12}).compare(0x111).branch('e',forward);
+      x.api('user32.dll','CallWindowProcW',[mem(control.oldProcedure),{argument:8},{argument:12},{argument:16},{argument:20}]).leave(16);
+      x.label(forward).api('user32.dll','SendMessageW',[mem(module.handle),{argument:12},{argument:16},{argument:20}]).leave(16);
+    }
     this.windowProcedure(module,wnd,prefix); this.showProcedure(module);
   }
   showProcedure(module) {
@@ -1765,7 +2145,7 @@ class NativeCompiler {
     }
     this.handler(module,prefix + 'Unload',[{ref:-4}]); x.emit(0x83,0x7d,0xfc,0).branch('ne',zero);
     if(module.form.properties.MDIChild)x.api('user32.dll','SendMessageW',[mem(this.mdi.client),0x221,{argument:8},0]);else x.api('user32.dll','DestroyWindow',[{argument:8}]);x.jump(zero);
-    x.label(destroy).value(mem(module.handle)).test().branch('e',zero).value(0).store(module.handle).store(module.loaded).store(module.client).store(module.menu);
+    x.label(destroy).value(mem(module.handle)).test().branch('e',zero).value(0).store(module.handle).store(module.loaded).store(module.initialized).store(module.client).store(module.menu);
     for (const control of module.controls.values()) x.store(control.handle);
     x.emit(0xff,0x0d).addr('live-forms').value(mem('live-forms')).test().branch('ne',zero).api('user32.dll','PostQuitMessage',[0]).jump(zero);
     x.label(fallback);
@@ -1823,9 +2203,9 @@ return {NativeCompileError,extractNativeDeclarations,compileWin32};
 })();
 
 /* ../ide/native-build.js */
-__modules[17]=(()=>{
-const {compileWin32}=__modules[16];
-const {download,safeName}=__modules[2];
+__modules[21]=(()=>{
+const {compileWin32}=__modules[20];
+const {download,safeName}=__modules[1];
 
 
 /** Browser-local native build; no compiler service, Node, or binary template is used. */
@@ -1853,7 +2233,7 @@ return {installNativeBuild};
 })();
 
 /* ../theme/icon-art.js */
-__modules[18]=(()=>{
+__modules[22]=(()=>{
 
 /** Authored classic IDE pixel artwork, not extracted Microsoft resources.
  * Every cell is one native 16px pixel. Keep semantic variants separate: a size,
@@ -2011,8 +2391,8 @@ return {ICON_PALETTE,ICON_ART,CONTROL_ART};
 })();
 
 /* ../theme/icons.js */
-__modules[19]=(()=>{
-const {ICON_ART,CONTROL_ART,ICON_PALETTE}=__modules[18];
+__modules[23]=(()=>{
+const {ICON_ART,CONTROL_ART,ICON_PALETTE}=__modules[22];
 /** Offline, font-independent classic glyph renderer, shared by IDE and runtime. */
 
 const ICON_NAMES=Object.freeze(Object.keys(ICON_ART));
@@ -2039,9 +2419,9 @@ return {ICON_NAMES,CONTROL_ICON_TYPES,hasIcon,hasControlIcon,iconSVG,icon,contro
 })();
 
 /* ../ide/virtual-list.js */
-__modules[20]=(()=>{
-const {el}=__modules[2];
-const {icon}=__modules[19];
+__modules[24]=(()=>{
+const {el}=__modules[1];
+const {icon}=__modules[23];
 
 
 const GLYPHS={'◇':'method','▣':'property','•':'constant','◆':'class','ϟ':'event','▤':'module'};
@@ -2102,293 +2482,8 @@ class ToolList {
 return {refreshToolLists,ToolList};
 })();
 
-/* ../runtime/binary-codec.js */
-__modules[21]=(()=>{
-const {VBError}=__modules[6];
-const {VBArray,VBCurrency,VBDecimal,VBErrorValue,NOTHING,coerce,numeric,vbString,Cell,makeRecord : buildRecord}=__modules[7];
-
-
-// Classic VB files use an ANSI code page. This browser runtime explicitly uses
-// Windows-1252 rather than silently writing UTF-8 or host-locale-dependent bytes.
-const c1=[0x20AC,0x81,0x201A,0x192,0x201E,0x2026,0x2020,0x2021,0x2C6,0x2030,0x160,0x2039,0x152,0x8D,0x17D,0x8F,0x90,0x2018,0x2019,0x201C,0x201D,0x2022,0x2013,0x2014,0x2DC,0x2122,0x161,0x203A,0x153,0x9D,0x17E,0x178];
-const charCodes=Array.from({length:256},(_,i)=>i>=128&&i<160?c1[i-128]:i);
-const encodeMap=new Map(charCodes.map((code,i)=>[String.fromCharCode(code),i]));
-function encodeANSI(text){return Uint8Array.from(String(text),c=>{const b=encodeMap.get(c);if(b===undefined)throw new VBError('Character is not representable in the Windows-1252 file encoding',5);return b;});}
-function decodeANSI(bytes){let result='';for(let i=0;i<bytes.length;i+=8192)result+=String.fromCharCode(...Array.from(bytes.subarray(i,i+8192),byte=>charCodes[byte]));return result;}
-const TYPES={byte:[1,'Uint8'],integer:[2,'Int16'],long:[4,'Int32'],single:[4,'Float32'],double:[8,'Float64'],boolean:[2,'Int16'],date:[8,'Float64'],currency:[8,'BigInt64']};
-const VARTYPES={0:'Empty',1:'Null',2:'Integer',3:'Long',4:'Single',5:'Double',6:'Currency',7:'Date',8:'String',10:'Error',11:'Boolean',14:'Decimal',17:'Byte'};
-const MAX_BYTES=20*1024*1024;
-
-/** Builds a typed UDT value with non-enumerable field metadata. */
-function makeRecord(name,fields){return buildRecord(name,fields);}
-function recordLength(value){
-  if(!value?.__fields)throw new VBError('User-defined type required',13);
-  let n=0;
-  for(const [,cell]of value.__fields){const v=cell.get(),type=String(cell.type).toLowerCase();if(v?.__fields)n+=recordLength(v);else if(v instanceof VBArray){for(const element of v.data)n+=element?.__fields?recordLength(element):TYPES[v.type.toLowerCase()]?.[0]||String(element??'').length;}else if(type==='string')n+=cell.fixedLength??String(v??'').length;else if(TYPES[type])n+=TYPES[type][0];else if(type==='variant')n+=16;else throw new VBError('Unsupported record field: '+cell.type,458);}
-  return n;
-}
-class Writer {
-  constructor(){this.chunks=[];this.length=0;}
-  write(bytes){if(this.length+bytes.length>MAX_BYTES)throw new VBError('Binary record exceeds 20 MiB limit',7);this.chunks.push(bytes);this.length+=bytes.length;}
-  number(type,value){const [size,method]=TYPES[type],bytes=new Uint8Array(size);new DataView(bytes.buffer)['set'+method](0,value,true);this.write(bytes);}
-  finish(){const bytes=new Uint8Array(this.length);let p=0;for(const b of this.chunks){bytes.set(b,p);p+=b.length;}return bytes;}
-}
-class Reader {
-  constructor(bytes){this.bytes=bytes;this.position=0;}
-  read(length){if(!Number.isInteger(length)||length<0||this.position+length>this.bytes.length)throw new VBError('Input past end of file',62);const result=this.bytes.subarray(this.position,this.position+length);this.position+=length;return result;}
-  number(type){const [size,method]=TYPES[type],b=this.read(size);return new DataView(b.buffer,b.byteOffset,b.byteLength)['get'+method](0,true);}
-}
-function variantType(value){if(value instanceof VBDecimal)return 14;if(value instanceof VBErrorValue)return 10;if(value===undefined)return 0;if(value===null)return 1;if(value instanceof VBCurrency)return 6;if(value instanceof Date)return 7;if(typeof value==='string')return 8;if(typeof value==='boolean')return 11;if(typeof value==='number')return 5;throw new VBError('Cannot serialize objects or scalar Variants containing arrays',458);}
-function* arrayIndices(bounds){if(!bounds.length)return;const idx=bounds.map(([l])=>l);while(true){yield [...idx];let d=0;for(;d<bounds.length;d++){if(++idx[d]<=bounds[d][1])break;idx[d]=bounds[d][0];}if(d===bounds.length)break;}}
-function put(writer,value,schema,mode,inRecord=false,depth=0){
-  if(depth>32)throw new VBError('Record nesting exceeds runtime limit',7);
-  const type=String(schema.type||'Variant').toLowerCase();
-  if(value instanceof VBArray){
-    if(!schema.isArray)throw new VBError('Scalar Variant containing an array is not supported by Put',458);
-    if(!value.bounds.length)throw new VBError('Subscript out of range',9);
-    if(value.dynamic&&(mode==='random'||inRecord)){writer.number('integer',value.bounds.length);for(const [lo,hi]of value.bounds){writer.number('long',hi-lo+1);writer.number('long',lo);}}
-    for(const indices of arrayIndices(value.bounds))put(writer,value.get(...indices),{type:value.type,fixedLength:value.fixedLength},mode,inRecord,depth+1);
-    return;
-  }
-  if(value?.__fields){for(const [,cell]of value.__fields)put(writer,cell.get(),cell,mode,true,depth+1);return;}
-  if(value===NOTHING||type==='object')throw new VBError('Objects cannot be written with Put',458);
-  if(type==='variant'){const kind=variantType(value);writer.number('integer',kind);if(kind<2)return;put(writer,value,{type:VARTYPES[kind]},mode,kind===8||inRecord,depth+1);return;}
-  if(type==='decimal'){writer.write(coerce(value,'Decimal').toBytes());return;}
-  if(type==='error'){writer.number('long',value.number);return;}
-  if(type==='string'){
-    const text=coerce(value,'String',schema.fixedLength),bytes=encodeANSI(text);
-    if(schema.fixedLength==null&&(mode==='random'||inRecord)){if(bytes.length>65535)throw new VBError('String exceeds 16-bit record descriptor',63);writer.number('integer',bytes.length>32767?bytes.length-65536:bytes.length);}
-    writer.write(bytes);return;
-  }
-  if(!TYPES[type])throw new VBError('Unsupported file data type: '+schema.type,458);
-  const coerced=coerce(value,type);
-  writer.number(type,type==='currency'?coerced.raw:type==='date'?numeric(coerced):coerced);
-}
-function get(reader,schema,current,mode,inRecord=false,depth=0){
-  if(depth>32)throw new VBError('Record nesting exceeds runtime limit',7);
-  const type=String(schema.type||'Variant').toLowerCase();
-  if(current instanceof VBArray||schema.isArray){
-    if(!schema.isArray)throw new VBError('Scalar Variant containing an array is not supported by Get',458);
-    let bounds=current?.bounds||[],dynamic=current?.dynamic??true,elementType=current?.type||schema.elementType||'Variant';
-    if(dynamic&&(mode==='random'||inRecord)){
-      const rank=reader.number('integer');if(rank<1||rank>32)throw new VBError('Invalid array descriptor',63);
-      bounds=[];for(let i=0;i<rank;i++){const size=reader.number('long'),lower=reader.number('long');if(size<1)throw new VBError('Invalid array descriptor',63);bounds.push([lower,lower+size-1]);}
-    }
-    if(!bounds.length)throw new VBError('Dimension the array before Binary Get',9);
-    const result=new VBArray(bounds,elementType,current?.elementFactory,current?.fixedLength);result.dynamic=dynamic;
-    for(const idx of arrayIndices(bounds))result.set(idx,get(reader,{type:elementType,fixedLength:current?.fixedLength},result.get(...idx),mode,inRecord,depth+1));
-    return result;
-  }
-  if(current?.__fields){const fields=new Map();for(const [name,cell]of current.__fields){const value=get(reader,cell,cell.get(),mode,true,depth+1),next=new Cell(cell.type,value,false,cell.fixedLength);next.isArray=cell.isArray;next.elementType=cell.elementType;fields.set(name,next);}return makeRecord(current.__type,fields);}
-  if(type==='object'||current===NOTHING)throw new VBError('Objects cannot be read with Get',458);
-  if(type==='variant'){
-    const kind=reader.number('integer');if(kind===0)return undefined;if(kind===1)return null;if(!VARTYPES[kind])throw new VBError('Unsupported Variant file descriptor: '+kind,458);
-    return get(reader,{type:VARTYPES[kind]},undefined,mode,kind===8||inRecord,depth+1);
-  }
-  if(type==='decimal')return VBDecimal.fromBytes(reader.read(16));
-  if(type==='error')return new VBErrorValue(reader.number('long'));
-  if(type==='string'){
-    const length=schema.fixedLength??((mode==='random'||inRecord)?reader.number('integer')&65535:vbString(current).length);
-    return decodeANSI(reader.read(length));
-  }
-  if(!TYPES[type])throw new VBError('Unsupported file data type: '+schema.type,458);
-  const value=reader.number(type);return type==='currency'?new VBCurrency(value,true):coerce(value,type);
-}
-function encodeVariable(value,schema={},mode='binary'){const writer=new Writer();put(writer,value,schema,mode);return writer.finish();}
-function decodeVariable(bytes,schema={},current,mode='binary'){const reader=new Reader(bytes),value=get(reader,schema,current,mode);return {value,bytesRead:reader.position};}
-
-return {encodeANSI,decodeANSI,makeRecord,recordLength,encodeVariable,decodeVariable};
-})();
-
-/* ../project/frx.js */
-__modules[22]=(()=>{
-const {VBError}=__modules[6];
-const {encodeANSI,decodeANSI}=__modules[21];
-/** Bounded FRX records; no COM deserialization, native code, or remote resource loads. */
-
-
-const MAX_RESOURCE_BYTES=20*1024*1024;
-const fail=message=>{throw new VBError('FRX: '+message,1002);};
-function cleanProjectPath(path){
-  path=String(path).replace(/\\/g,'/');if(!path||/^[\/]|^[a-z]:|\0/i.test(path))fail('unsafe project path: '+path);
-  const out=[];for(const part of path.split('/')){if(!part||part==='.')continue;if(part==='..'){if(!out.length)fail('path escapes project root: '+path);out.pop();}else out.push(part);}if(!out.length)fail('empty project path');return out.join('/');
-}
-function relativeProjectPath(fromFile,toFile){const a=cleanProjectPath(fromFile).split('/');a.pop();const b=cleanProjectPath(toFile).split('/');while(a.length&&b.length&&a[0].toLowerCase()===b[0].toLowerCase()){a.shift();b.shift();}return [...a.map(()=> '..'),...b].join('\\');}
-function resolveProjectPath(paths,owner,reference,{basenameFallback=false}={}){
-  if(/^[\\/]|^[a-z]:|\0/i.test(String(reference)))fail('unsafe resource reference: '+reference);
-  const names=[...paths],parent=String(owner||'').replace(/\\/g,'/').split('/').slice(0,-1).join('/');
-  const candidate=cleanProjectPath((parent?parent+'/':'')+reference),matches=names.filter(n=>n.toLowerCase()===candidate.toLowerCase());
-  if(matches.length>1)fail('ambiguous case-insensitive file: '+candidate);if(matches.length)return matches[0];
-  if(basenameFallback){const base=String(reference).replace(/\\/g,'/').split('/').at(-1).toLowerCase(),found=names.filter(n=>n.split('/').at(-1).toLowerCase()===base);if(found.length>1)fail('ambiguous file name: '+reference);return found[0]||null;}return null;
-}
-function fromBase64(data){if(typeof data!=='string'||data.length>MAX_RESOURCE_BYTES*4/3+8)fail('invalid or oversized base64 resource');let binary;try{binary=atob(data);}catch{fail('invalid base64');}return Uint8Array.from(binary,c=>c.charCodeAt(0));}
-function toBase64(bytes){if(bytes.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');let result='';for(let at=0;at<bytes.length;at+=8192)result+=String.fromCharCode(...bytes.subarray(at,at+8192));return btoa(result);}
-function view(bytes){return new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);}
-function range(bytes,offset,length){if(!Number.isInteger(offset)||!Number.isInteger(length)||offset<0||length<0||offset+length>bytes.length)fail('truncated record or out-of-range offset');}
-function resourceOffset(value){if(typeof value==='number'){if(Number.isInteger(value)&&value>=0)return value;}else if(/^[0-9a-f]{1,8}$/i.test(value||''))return parseInt(value,16);fail('invalid hexadecimal resource offset');}
-/** Decode only the record identified by the property; never guess by scanning untrusted bytes. */
-function readFRXRecord(input,offset,property='Text'){
-  const bytes=input instanceof Uint8Array?input:new Uint8Array(input);if(bytes.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');offset=resourceOffset(offset);range(bytes,offset,1);const v=view(bytes),remaining=bytes.length-offset;
-  if(property==='List'){
-    range(bytes,offset,4);const count=v.getUint16(offset,true),signature=v.getUint16(offset+2,true);if(![3,7].includes(signature))fail('unsupported list signature');let cursor=offset+4;const items=[];
-    for(let i=0;i<count;i++){range(bytes,cursor,2);const size=v.getUint16(cursor,true);cursor+=2;range(bytes,cursor,size);items.push(decodeANSI(bytes.subarray(cursor,cursor+size)));cursor+=size;}return {kind:'list',items,signature,bytesRead:cursor-offset};
-  }
-  if(remaining>=12&&v.getUint32(offset+4,true)===0x746c){const size=v.getUint32(offset,true),payload=v.getUint32(offset+8,true);if(size!==payload+8)fail('inconsistent picture lengths');range(bytes,offset+12,payload);return {kind:'picture',bytes:bytes.slice(offset+12,offset+12+payload),bytesRead:12+payload};}
-  let header=1,length=bytes[offset],kind='text8';
-  if(property==='LongText'||bytes[offset]===255&&remaining>=4&&v.getUint32(offset,true)===remaining-4){range(bytes,offset,4);header=4;length=v.getUint32(offset,true);kind='text32';}
-  else if(bytes[offset]===255){range(bytes,offset,3);header=3;length=v.getUint16(offset+1,true);kind='text16';}
-  else if(remaining>=4&&bytes.subarray(offset,offset+4).includes(0)){header=4;length=v.getUint32(offset,true);kind='text32';}
-  range(bytes,offset+header,length);return {kind,bytes:bytes.slice(offset+header,offset+header+length),bytesRead:header+length};
-}
-function writeFRXRecord(value,kind='text32',{signature=3}={}){
-  if(kind==='list'){
-    if(!Array.isArray(value)||value.length>65535)fail('list must contain at most 65,535 items');const encoded=value.map(item=>encodeANSI(String(item)));for(const b of encoded)if(b.length>65535)fail('list item exceeds 65,535 bytes');const size=4+encoded.reduce((n,b)=>n+2+b.length,0);if(size>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const out=new Uint8Array(size),v=view(out);v.setUint16(0,value.length,true);v.setUint16(2,[3,7].includes(signature)?signature:3,true);let at=4;for(const b of encoded){v.setUint16(at,b.length,true);out.set(b,at+2);at+=2+b.length;}return out;
-  }
-  const bytes=kind==='picture'?new Uint8Array(value):encodeANSI(String(value));if(bytes.length>MAX_RESOURCE_BYTES-12)fail('resource exceeds 20 MiB limit');let header=kind==='picture'?12:kind==='text8'&&bytes.length<255?1:kind==='text16'&&bytes.length<=65535?3:4;const out=new Uint8Array(header+bytes.length),v=view(out);if(header===12){v.setUint32(0,bytes.length+8,true);v.setUint32(4,0x746c,true);v.setUint32(8,bytes.length,true);}else if(header===4)v.setUint32(0,bytes.length,true);else if(header===3){out[0]=255;v.setUint16(1,bytes.length,true);}else out[0]=bytes.length;out.set(bytes,header);return out;
-}
-function rasterDataURL(input){
-  let bytes=input,mime='';const b=bytes,v=view(bytes),starts=hex=>hex.every((n,i)=>b[i]===n);
-  if(starts([137,80,78,71,13,10,26,10]))mime='image/png';
-  else if(starts([255,216,255]))mime='image/jpeg';
-  else if(starts([71,73,70,56])&&[55,57].includes(b[4])&&b[5]===97)mime='image/gif';
-  else if(starts([66,77]))mime='image/bmp';
-  else if(starts([0,0,1,0]))mime='image/x-icon';
-  else if(b.length>=40&&[40,108,124].includes(v.getUint32(0,true))){
-    const header=v.getUint32(0,true),bits=v.getUint16(14,true),compression=v.getUint32(16,true);if(![1,4,8,16,24,32].includes(bits)||![0,3,6].includes(compression))return null;
-    const colors=v.getUint32(32,true)||(bits<=8?1<<bits:0),extra=header===40?(compression===3?12:compression===6?16:0):0,pixelOffset=14+header+colors*4+extra;
-    if(colors>256||pixelOffset>bytes.length+14)return null;const bmp=new Uint8Array(bytes.length+14),w=view(bmp);w.setUint16(0,0x4d42,true);w.setUint32(2,bmp.length,true);w.setUint32(10,pixelOffset,true);bmp.set(bytes,14);bytes=bmp;mime='image/bmp';
-  }
-  return mime?'data:'+mime+';base64,'+toBase64(bytes):null;
-}
-function rasterBytes(url){const match=String(url).match(/^data:image\/(?:png|jpeg|gif|bmp|x-icon|vnd\.microsoft\.icon);base64,([A-Za-z0-9+/=]+)$/i);if(!match)fail('native Picture export requires an embedded PNG, JPEG, GIF, BMP, or ICO');const bytes=fromBase64(match[1]);if(!rasterDataURL(bytes))fail('unsupported raster signature');return bytes;}
-const TEXT_PROPERTIES=new Set(['text','caption','tooltiptext','textrtf','linktopic','tag']);
-function hydrateResources(project,diagnostics=[]){
-  const cache=new Map(),paths=Object.keys(project.assets||{});
-  for(const module of project.modules){if(!module.form)continue;for(const node of [module.form,...module.form.controls,...module.form.menus])for(const [key,reference]of Object.entries(node.properties||{})){
-    if(!reference?.resource)continue;try{
-      const path=resolveProjectPath(paths,module.sourcePath||module.name+'.frm',reference.resource);
-      if(!path)fail('missing resource file '+reference.resource);if(!cache.has(path))cache.set(path,fromBase64(project.assets[path].data));
-      const lower=key.toLowerCase();if(!TEXT_PROPERTIES.has(lower)&&!['list','picture','icon','mouseicon'].includes(lower))fail('property '+key+' is retained as an opaque resource');
-      const record=readFRXRecord(cache.get(path),reference.offset,lower==='list'?'List':reference.text?'LongText':key);let value;
-      if(lower==='list')value=record.items;else if(['picture','icon','mouseicon'].includes(lower)){if(record.kind!=='picture')fail('picture header not supported');value=rasterDataURL(record.bytes);if(!value)fail('native/OLE/metafile picture retained; no raster browser decoder');}
-      else {if(record.kind==='picture')fail('text references a picture record');value=decodeANSI(record.bytes);}
-      node.resourceBindings ||= {};node.resourceBindings[key]={reference:{...reference},assetPath:path,kind:record.kind,signature:record.signature,originalValue:structuredClone(value)};node.properties[key]=value;
-    }catch(error){diagnostics.push({severity:'warning',source:module.name,message:node.name+'.'+key+': '+error.message+' (original bytes and reference retained).'});}
-  }}return project;
-}
-/** Native export is copy-on-write: original blobs never move; edited entries append. */
-function prepareResources(project){
-  const modules=structuredClone(project.modules),files={};for(const [path,asset]of Object.entries(project.assets||{})){cleanProjectPath(path);if(asset.encoding==='base64')files[path]=fromBase64(asset.data);}
-  const append=(path,value,kind,options)=>{path=cleanProjectPath(path);const record=writeFRXRecord(value,kind,options),before=files[path]||new Uint8Array();if(before.length+record.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const all=new Uint8Array(before.length+record.length);all.set(before);all.set(record,before.length);files[path]=all;return before.length.toString(16).toUpperCase().padStart(4,'0');};
-  for(const module of modules){if(!module.form)continue;const source=module.sourcePath||module.name+'.frm';for(const node of [module.form,...module.form.controls,...module.form.menus])for(const [key,value]of Object.entries(node.properties||{})){
-    if(value?.resource)continue;const binding=node.resourceBindings?.[key],same=binding&&JSON.stringify(value)===JSON.stringify(binding.originalValue);if(same){node.properties[key]=binding.reference;continue;}
-    const lower=key.toLowerCase(),picture=['picture','icon','mouseicon'].includes(lower),list=lower==='list'&&Array.isArray(value),text=TEXT_PROPERTIES.has(lower)&&typeof value==='string';
-    if(!binding&&!list&&!(picture&&value)&&!(text&&(/[\r\n]/.test(value)||value.length>255)))continue;
-    if(picture&&!value){delete node.properties[key];continue;}if(!list&&!picture&&!text)fail('cannot serialize edited opaque resource '+node.name+'.'+key);
-    const path=binding?.assetPath||source.replace(/\.frm$/i,'.frx'),kind=picture?'picture':list?'list':binding?.kind||'text32',offset=append(path,picture?rasterBytes(value):value,kind,{signature:binding?.signature});
-    node.properties[key]={resource:relativeProjectPath(source,path),offset,...(text?{text:true}:{})};
-  }}return {modules,files};
-}
-
-return {MAX_RESOURCE_BYTES,cleanProjectPath,relativeProjectPath,resolveProjectPath,fromBase64,toBase64,resourceOffset,readFRXRecord,writeFRXRecord,rasterDataURL,rasterBytes,hydrateResources,prepareResources};
-})();
-
-/* ../project/res.js */
-__modules[23]=(()=>{
-const {VBError}=__modules[6];
-const {cleanProjectPath,fromBase64,toBase64,MAX_RESOURCE_BYTES}=__modules[22];
-/** Windows 32-bit .res containers. Payloads remain opaque unless explicitly edited. */
-
-
-const RESOURCE_TYPES=Object.freeze({1:'Cursor',2:'Bitmap',3:'Icon',4:'Menu',5:'Dialog',6:'String',7:'Font directory',8:'Font',9:'Accelerator',10:'Custom data',11:'Message table',12:'Cursor group',14:'Icon group',16:'Version',24:'Manifest'});
-const resourceKey=entry=>JSON.stringify([entry.type,entry.name,entry.language||0]);
-const fail=message=>{throw new VBError('RES: '+message,1002);};
-const align=n=>Math.ceil(n/4)*4;
-function uint(value,bits,label){if(!Number.isInteger(value)||value<0||value>2**bits-1)fail('Invalid '+label);return value;}
-function identifier(value){if(typeof value==='number')return uint(value,16,'resource identifier');if(typeof value!=='string'||!value||value.length>1024||value.includes('\0')||value.charCodeAt(0)===65535)fail('Invalid resource name');return value;}
-function signature(entry){return JSON.stringify([entry.type,entry.name,entry.language,entry.flags,entry.dataVersion,entry.version,entry.characteristics,entry.data]);}
-function normalizeResources(model){
-  if(!model||!Array.isArray(model.entries)||model.entries.length>10000)fail('Expected up to 10,000 resource entries');
-  let total=32;const seen=new Set(),entries=model.entries.map(input=>{
-    if(!input||typeof input.data!=='string')fail('Missing resource data');
-    if(input.data.length>MAX_RESOURCE_BYTES*4/3+4)fail('Resource exceeds 20 MiB');
-    const entry={type:identifier(input.type),name:identifier(input.name),language:uint(input.language??0,16,'language'),flags:uint(input.flags??0x30,16,'memory flags'),dataVersion:uint(input.dataVersion??0,32,'data version'),version:uint(input.version??0,32,'version'),characteristics:uint(input.characteristics??0,32,'characteristics'),data:toBase64(fromBase64(input.data))};
-    if(entry.type===0&&entry.name===0&&!entry.data)fail('Null resource is a container header, not an entry');
-    total+=Math.ceil(entry.data.length*3/4)+64+(typeof entry.type==='string'?entry.type.length*2:0)+(typeof entry.name==='string'?entry.name.length*2:0);if(total>MAX_RESOURCE_BYTES)fail('Resource file exceeds 20 MiB');
-    const key=resourceKey(entry);if(seen.has(key))fail('Duplicate resource type, name and language');seen.add(key);return entry;
-  });
-  const result={fileName:cleanProjectPath(model.fileName||'Project.res'),entries};
-  if(!/\.res$/i.test(result.fileName))fail('Resource file name must end in .res');
-  if(model.original!==undefined){if(typeof model.original!=='string'||model.original.length>MAX_RESOURCE_BYTES*4/3+4)fail('Invalid original resource file');result.original=model.original;}
-  return result;
-}
-function parse(bytes){
-  if(!(bytes instanceof Uint8Array))bytes=new Uint8Array(bytes);
-  if(bytes.length>MAX_RESOURCE_BYTES)fail('Resource file exceeds 20 MiB');
-  if(bytes.length<32)fail('Truncated or non-Win32 resource container');
-  const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),records=[];let offset=0;
-  while(offset<bytes.length){
-    if(offset%4||offset+8>bytes.length)fail('Truncated or misaligned header');
-    const start=offset,size=view.getUint32(start,true),headerSize=view.getUint32(start+4,true),headerEnd=start+headerSize;
-    if(headerSize<24||headerSize%4||headerEnd>bytes.length||size>bytes.length-headerEnd)fail('Invalid resource header or payload bounds');
-    let at=start+8;
-    const readName=()=>{if(at+2>headerEnd)fail('Truncated identifier');let word=view.getUint16(at,true);at+=2;if(word===65535){if(at+2>headerEnd)fail('Truncated ordinal');word=view.getUint16(at,true);at+=2;return word;}let text='';while(word){text+=String.fromCharCode(word);if(text.length>1024||at+2>headerEnd)fail('Unterminated or oversized name');word=view.getUint16(at,true);at+=2;}return text;};
-    const type=readName(),name=readName();at=align(at);if(at+16>headerEnd)fail('Missing fixed header fields');
-    const entry={type,name,dataVersion:view.getUint32(at,true),flags:view.getUint16(at+4,true),language:view.getUint16(at+6,true),version:view.getUint32(at+8,true),characteristics:view.getUint32(at+12,true),data:toBase64(bytes.subarray(headerEnd,headerEnd+size))};
-    const end=align(headerEnd+size);if(end>bytes.length)fail('Truncated data alignment padding');
-    records.push({entry,start,end});if(records.length>10001)fail('More than 10,000 resources');offset=end;
-  }
-  const prefix=records[0];if(!prefix||prefix.entry.type!==0||prefix.entry.name!==0||prefix.entry.data!=='')fail('Missing Win32 null-resource header');
-  return {records:records.slice(1),prefix};
-}
-function readRES(bytes,fileName='Project.res'){
-  bytes=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);const parsed=parse(bytes);
-  return normalizeResources({fileName,entries:parsed.records.map(r=>r.entry),original:toBase64(bytes)});
-}
-function recordBytes(entry){
-  const nameLength=value=>typeof value==='number'?4:(value.length+1)*2;
-  const fixed=align(8+nameLength(entry.type)+nameLength(entry.name)),headerSize=fixed+16,data=fromBase64(entry.data),out=new Uint8Array(align(headerSize+data.length)),view=new DataView(out.buffer);
-  view.setUint32(0,data.length,true);view.setUint32(4,headerSize,true);let at=8;
-  for(const value of [entry.type,entry.name]){if(typeof value==='number'){view.setUint16(at,65535,true);view.setUint16(at+2,value,true);at+=4;}else{for(let i=0;i<value.length;i++){view.setUint16(at,value.charCodeAt(i),true);at+=2;}at+=2;}}
-  view.setUint32(fixed,entry.dataVersion,true);view.setUint16(fixed+4,entry.flags,true);view.setUint16(fixed+6,entry.language,true);view.setUint32(fixed+8,entry.version,true);view.setUint32(fixed+12,entry.characteristics,true);out.set(data,headerSize);return out;
-}
-function writeRES(model){
-  model=normalizeResources(model);let original,parsed;
-  if(model.original){original=fromBase64(model.original);parsed=parse(original);}
-  const old=new Map((parsed?.records||[]).map(r=>[resourceKey(r.entry),r]));
-  if(parsed&&parsed.records.length===model.entries.length&&parsed.records.every((r,i)=>signature(r.entry)===signature(model.entries[i])))return original.slice();
-  const nullEntry={type:0,name:0,language:0,flags:0,dataVersion:0,version:0,characteristics:0,data:''};
-  const chunks=[parsed?original.slice(0,parsed.prefix.end):recordBytes(nullEntry)];
-  for(const entry of model.entries){const prior=old.get(resourceKey(entry));chunks.push(prior&&signature(prior.entry)===signature(entry)?original.slice(prior.start,prior.end):recordBytes(entry));}
-  const length=chunks.reduce((n,c)=>n+c.length,0);if(length>MAX_RESOURCE_BYTES)fail('Resource file exceeds 20 MiB');const out=new Uint8Array(length);let at=0;for(const chunk of chunks){out.set(chunk,at);at+=chunk.length;}return out;
-}
-function decodeStringTable(bytes){
-  bytes=bytes instanceof Uint8Array?bytes:new Uint8Array(bytes);const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),strings=[];let at=0;
-  for(let slot=0;slot<16;slot++){if(at+2>bytes.length)fail('Truncated string-table length');const length=view.getUint16(at,true);at+=2;if(at+length*2>bytes.length)fail('Truncated string-table text');let value='';for(let i=0;i<length;i++)value+=String.fromCharCode(view.getUint16(at+i*2,true));strings.push(value);at+=length*2;}
-  if(at!==bytes.length)fail('Trailing bytes in string-table block');return strings;
-}
-function encodeStringTable(strings){
-  if(!Array.isArray(strings)||strings.length!==16||strings.some(s=>typeof s!=='string'||s.length>65535))fail('Expected sixteen strings, each at most 65,535 UTF-16 code units');
-  const bytes=new Uint8Array(32+strings.reduce((n,s)=>n+s.length*2,0)),view=new DataView(bytes.buffer);let at=0;
-  for(const s of strings){view.setUint16(at,s.length,true);at+=2;for(let i=0;i<s.length;i++){view.setUint16(at,s.charCodeAt(i),true);at+=2;}}return bytes;
-}
-/** Pure transactions: validation failure never mutates the source resource model. */
-function setResource(model,entry,{replace=true}={}){
-  const next=normalizeResources(model||{entries:[]});entry=normalizeResources({entries:[entry]}).entries[0];const index=next.entries.findIndex(e=>resourceKey(e)===resourceKey(entry));if(index>=0){if(!replace)fail('Resource already exists');next.entries[index]=entry;}else next.entries.push(entry);return normalizeResources(next);
-}
-function removeResource(model,key){const next=normalizeResources(model);next.entries=next.entries.filter(e=>resourceKey(e)!==key);return next;}
-function setResourceString(model,id,text,language=0){
-  id=uint(id,16,'string ID');language=uint(language,16,'language');if(typeof text!=='string'||text.length>65535)fail('Invalid string value');
-  const next=normalizeResources(model||{entries:[]}),name=(id>>4)+1,prior=next.entries.find(e=>e.type===6&&e.name===name&&e.language===language),strings=prior?decodeStringTable(fromBase64(prior.data)):Array(16).fill('');strings[id&15]=text;
-  return setResource(next,{...prior,type:6,name,language,data:toBase64(encodeStringTable(strings))});
-}
-function listResourceStrings(model){const result=[];for(const entry of model?.entries||[])if(entry.type===6&&Number.isInteger(entry.name)&&entry.name>=1&&entry.name<=4096){const strings=decodeStringTable(fromBase64(entry.data));strings.forEach((text,slot)=>{if(text)result.push({id:(entry.name-1)*16+slot,text,language:entry.language,key:resourceKey(entry)});});}return result;}
-
-return {RESOURCE_TYPES,resourceKey,normalizeResources,readRES,writeRES,decodeStringTable,encodeStringTable,setResource,removeResource,setResourceString,listResourceStrings};
-})();
-
 /* ../theme/theme.js */
-__modules[24]=(()=>{
+__modules[25]=(()=>{
 
 /** Theme data is shared by DOM controls, canvas/WebGPU drawing and the exporter.
  * Values are RGB, not OLE BGR. No proprietary font or artwork is embedded.
@@ -2445,11 +2540,11 @@ return {THEMES,SYSTEM_ROLES,SYSTEM_COLOR_NAMES,themeId,getTheme,applyTheme,color
 })();
 
 /* ../theme/menu.js */
-__modules[25]=(()=>{
-const {uiDocument}=__modules[1];
-const {el}=__modules[2];
-const {icon}=__modules[19];
-const {getTheme}=__modules[24];
+__modules[26]=(()=>{
+const {uiDocument}=__modules[0];
+const {el}=__modules[1];
+const {icon}=__modules[23];
+const {getTheme}=__modules[25];
 /** Shared IDE/runtime popup menus: one session, a retained submenu stack, no leaked listeners. */
 
 
@@ -2534,7 +2629,7 @@ return {mnemonicText,menuIsOpen,closeMenu,showMenu};
 })();
 
 /* ../ide/command-bar-model.js */
-__modules[26]=(()=>{
+__modules[27]=(()=>{
 
 /** Serializable command-bar state. Command IDs are validated against the public
  * command catalog; no saved layout can execute injected script or unknown IDs. */
@@ -2579,12 +2674,12 @@ return {COMMANDS,COMMAND_ICONS,decorateCommandItems,DEFAULT_BARS,CommandBarLayou
 })();
 
 /* ../ide/ui.js */
-__modules[27]=(()=>{
-const {uiDocument,uiDocuments}=__modules[1];
-const { el }=__modules[2];
-const {icon, controlIcon}=__modules[19];
-const {showMenu : themedShowMenu, closeMenu, mnemonicText, menuIsOpen}=__modules[25];
-const {decorateCommandItems}=__modules[26];
+__modules[28]=(()=>{
+const {uiDocument,uiDocuments}=__modules[0];
+const { el }=__modules[1];
+const {icon, controlIcon}=__modules[23];
+const {showMenu : themedShowMenu, closeMenu, mnemonicText, menuIsOpen}=__modules[26];
+const {decorateCommandItems}=__modules[27];
 
 
 
@@ -2674,12 +2769,12 @@ return {showMenu,modal,alertDialog,promptDialog,makeDraggable,resizeHandle,tabbe
 })();
 
 /* ../ide/resource-editor.js */
-__modules[28]=(()=>{
-const {el,clone,download}=__modules[2];
-const {ToolList}=__modules[20];
-const {readRES,writeRES,normalizeResources,resourceKey,RESOURCE_TYPES,listResourceStrings,setResource,setResourceString,removeResource}=__modules[23];
-const {fromBase64,toBase64,MAX_RESOURCE_BYTES,rasterDataURL}=__modules[22];
-const {icon}=__modules[27];
+__modules[29]=(()=>{
+const {el,clone,download}=__modules[1];
+const {ToolList}=__modules[24];
+const {readRES,writeRES,normalizeResources,resourceKey,RESOURCE_TYPES,listResourceStrings,setResource,setResourceString,removeResource}=__modules[9];
+const {fromBase64,toBase64,MAX_RESOURCE_BYTES,rasterDataURL}=__modules[8];
+const {icon}=__modules[28];
 
 
 
@@ -2770,77 +2865,9 @@ function installResourceEditor(ide){
 return {ResourceEditor,installResourceEditor};
 })();
 
-/* ../project/model.js */
-__modules[29]=(()=>{
-const { clone, lower, safeName }=__modules[2];
-const {normalizeResources}=__modules[23];
-const { VBError }=__modules[6];
-
-
-
-const PROJECT_SCHEMA=1;
-let sequence=0;
-const newId=()=>`id_${Date.now().toString(36)}_${(++sequence).toString(36)}`;
-const BASIC_CONTROL_TYPES=['Pointer','PictureBox','Label','TextBox','Frame','CommandButton','CheckBox','OptionButton','ComboBox','ListBox','HScrollBar','VScrollBar','Timer','DriveListBox','DirListBox','FileListBox','Shape','Line','Image','Data','OLE'];
-const EXTENDED_CONTROL_TYPES=['TreeView','ListView','ProgressBar','Slider','StatusBar','Toolbar','TabStrip','SSTab','RichTextBox','MSFlexGrid','MSHFlexGrid','DataGrid','DTPicker','MonthView','UpDown','ImageList','CommonDialog','MSChart'];
-const CONTROL_DEFAULTS={
-  Label:{Caption:'Label',Width:1440,Height:300,BackStyle:0,Alignment:0},TextBox:{BackColor:-2147483643,Text:'',Width:1800,Height:315,MultiLine:0,ScrollBars:0,MaxLength:0,PasswordChar:'',Locked:0,Alignment:0},CommandButton:{Caption:'Command',Width:1440,Height:420,Default:0,Cancel:0},Frame:{Caption:'Frame',Width:3300,Height:1800},CheckBox:{Caption:'Check',Value:0,Width:1800,Height:300},OptionButton:{Caption:'Option',Value:0,Width:1800,Height:300},ComboBox:{BackColor:-2147483643,Text:'',List:[],Width:2100,Height:315,Style:0,ListIndex:-1},ListBox:{BackColor:-2147483643,List:[],Width:2400,Height:1800,ListIndex:-1,MultiSelect:0,Sorted:0},PictureBox:{Width:2400,Height:1800,BackColor:-2147483633,ScaleMode:3,AutoRedraw:-1,BorderStyle:1},Image:{Width:1440,Height:1440,Stretch:-1},Shape:{Width:1440,Height:900,Shape:0,FillStyle:1,FillColor:16777215,BorderColor:0},Line:{Width:1440,Height:15,BorderColor:0,BorderWidth:1},Timer:{Interval:1000,Enabled:0,Width:420,Height:420},HScrollBar:{Width:2400,Height:255,Min:0,Max:32767,Value:0,SmallChange:1,LargeChange:100},VScrollBar:{Width:255,Height:2400,Min:0,Max:32767,Value:0,SmallChange:1,LargeChange:100},ProgressBar:{Width:2700,Height:315,Min:0,Max:100,Value:30},Slider:{Width:2700,Height:450,Min:0,Max:10,Value:3,TickFrequency:1},TreeView:{BackColor:-2147483643,Width:2700,Height:2100,LineStyle:1},ListView:{BackColor:-2147483643,Width:3600,Height:2100,View:3,FullRowSelect:-1,GridLines:0},StatusBar:{Width:5400,Height:315,SimpleText:'Ready',Style:1},Toolbar:{Width:5400,Height:450},TabStrip:{Width:4500,Height:2400},SSTab:{Width:4500,Height:2400,Tab:0,Tabs:3},RichTextBox:{BackColor:-2147483643,Width:3600,Height:2100,Text:'Rich text',MultiLine:-1,ScrollBars:3},MSFlexGrid:{Width:4200,Height:2100,Rows:5,Cols:3,FixedRows:1,FixedCols:1,Row:1,Col:1},MSHFlexGrid:{Width:4200,Height:2100,Rows:5,Cols:3,FixedRows:1,FixedCols:1,Row:1,Col:1},DataGrid:{Width:4200,Height:2100,Rows:5,Cols:3},DTPicker:{BackColor:-2147483643,Width:2400,Height:330,Value:'2026-10-03',Format:0},MonthView:{BackColor:-2147483643,Width:3300,Height:2700,Value:'2026-10-03'},UpDown:{Width:255,Height:450,Min:0,Max:100,Value:0,Increment:1,Wrap:0,Orientation:0},ImageList:{Width:420,Height:420,ImageWidth:16,ImageHeight:16},CommonDialog:{Width:420,Height:420,Filter:'Text files|*.txt|All files|*.*',FileName:'',DialogTitle:'Open'},MSChart:{BackColor:-2147483643,Width:4200,Height:2550,ChartType:1,RowCount:5,ColumnCount:1},FileListBox:{BackColor:-2147483643,Width:2400,Height:1500,Pattern:'*.*',Path:'/'},DirListBox:{BackColor:-2147483643,Width:2400,Height:1500,Path:'/'},DriveListBox:{BackColor:-2147483643,Width:2400,Height:315,Drive:'C:'},Data:{Width:2400,Height:315,Caption:'Data'},OLE:{Width:1800,Height:1200,Caption:'OLE (unsupported)'}
-};
-function createControl(type,name=null,left=300,top=300){const id=newId();return {id,name:name||type+'1',type,parent:null,properties:{Name:name||type+'1',Left:left,Top:top,Width:1800,Height:450,Visible:-1,Enabled:-1,TabIndex:0,TabStop:['Label','Frame','Shape','Line','Image','StatusBar','ProgressBar','Timer','ImageList','CommonDialog'].includes(type)?0:-1,FontName:'MS Sans Serif',FontSize:8.25,FontBold:0,FontItalic:0,ForeColor:-2147483640,BackColor:-2147483633,ToolTipText:'',Tag:'',...clone(CONTROL_DEFAULTS[type]||{})}};}
-function createForm(name='Form1',caption=name){return {id:newId(),name,kind:'form',code:`Option Explicit\n\nPrivate Sub Form_Load()\n    \nEnd Sub\n`,form:{id:newId(),name,type:'Form',properties:{Name:name,Caption:caption,ClientWidth:9000,ClientHeight:6000,Width:9120,Height:6450,Left:300,Top:300,StartUpPosition:2,BorderStyle:2,BackColor:-2147483633,ForeColor:-2147483640,FontName:'MS Sans Serif',FontSize:8.25,FontBold:0,FontItalic:0,ScaleMode:1,KeyPreview:0,Visible:-1,Enabled:-1},controls:[],menus:[]}};}
-function newProject(name='Project1'){const form=createForm();return {schema:PROJECT_SCHEMA,id:newId(),name,description:'',startup:form.name,modules:[form],settings:{snapToGrid:true,gridSize:120,showGrid:true,renderer:'auto',tabWidth:4,requireVariableDeclaration:true},references:[],assets:{},vfs:{files:{},directories:['/']},appSettings:{}};}
-function validateForm(form,moduleName){
-  if(!form||typeof form!=='object'||Array.isArray(form))throw new VBError('Invalid form model: '+moduleName,1002);
-  form.id ||= newId();form.name=moduleName;form.properties ||= {};form.controls ||= [];form.menus ||= [];
-  if(!Array.isArray(form.controls)||!Array.isArray(form.menus))throw new VBError('Form controls and menus must be arrays',1002);
-  if(form.controls.length>10000||form.menus.length>10000)throw new VBError('Form exceeds 10,000-control or menu limit',7);
-  const ids=new Set(),controls=new Map(),menus=new Map(),allNames=new Set();
-  const validateNode=node=>{
-    if(!node||typeof node.name!=='string'||!/^[A-Za-z_]\w*$/.test(node.name))throw new VBError('Invalid control or menu name: '+node?.name,1002);
-    if(typeof node.type!=='string')throw new VBError('Missing control type: '+node.name,1002);
-    if(!node.id||ids.has(node.id))node.id=newId();ids.add(node.id);node.properties ||= {};
-    if(typeof node.properties!=='object'||Array.isArray(node.properties))throw new VBError('Invalid properties: '+node.name,1002);
-    for(const key of ['Left','Top','Width','Height','ClientWidth','ClientHeight'])if(node.properties[key]!==undefined){const n=Number(node.properties[key]);if(!Number.isFinite(n)||Math.abs(n)>300000||/Width|Height/.test(key)&&n<0)throw new VBError('Invalid geometry: '+node.name+'.'+key,380);node.properties[key]=n;}
-  };
-  validateNode(form);
-  for(const c of form.controls){validateNode(c);const key=lower(c.name),items=controls.get(key)||[];
-    if(c.properties.Index!==undefined){const index=Number(c.properties.Index);if(!Number.isInteger(index)||index<0||index>32767)throw new VBError('Invalid control array index: '+c.name,380);c.properties.Index=index;}
-    if(items.some(item=>item.properties.Index===undefined||c.properties.Index===undefined||item.properties.Index===c.properties.Index||item.type!==c.type))throw new VBError('Duplicate or incompatible control array name/index: '+c.name,1002);
-    items.push(c);controls.set(key,items);allNames.add(key);
-  }
-  for(const m of form.menus){validateNode(m);const key=lower(m.name);if(allNames.has(key))throw new VBError('Duplicate menu or control name: '+m.name,1002);allNames.add(key);menus.set(key,m);}
-  for(const [nodes,lookup]of [[form.controls,controls],[form.menus,menus]])for(const node of nodes){const seen=new Set([lower(node.name)]);let current=node;
-    while(current.parent){const key=lower(current.parent);if(seen.has(key))throw new VBError('Cyclic parent relationship: '+node.name,1002);seen.add(key);const result=lookup.get(key);if(!result)throw new VBError('Missing parent '+current.parent+' for '+node.name,1002);const parent=Array.isArray(result)?result[0]:result;current.parent=parent.name;current=parent;}
-  }
-}
-function normalizeProject(value){
-  if(!value||typeof value!=='object'||!Array.isArray(value.modules))throw new VBError('Not a VB6 Studio project',1002);
-  if(value.schema!==PROJECT_SCHEMA)throw new VBError('Unsupported project schema: '+value.schema,1002);
-  if(!value.modules.length||value.modules.length>1000)throw new VBError('Project must contain 1–1,000 modules',7);
-  const project=clone(value);project.id ||= newId();project.name=safeName(project.name);project.settings={...newProject().settings,...project.settings};project.references ||= [];project.assets ||= {};project.vfs ||= {files:{}};project.appSettings ||= {};
-  const names=new Set(),ids=new Set();for(const m of project.modules){
-    if(!m||typeof m.name!=='string'||!/^[A-Za-z_]\w*$/.test(m.name))throw new VBError('Invalid module name: '+m?.name,1002);
-    if(names.has(lower(m.name)))throw new VBError('Duplicate module: '+m.name,1002);names.add(lower(m.name));
-    if(!m.id||ids.has(m.id))m.id=newId();ids.add(m.id);m.kind ||= 'module';if(!['form','module','class'].includes(m.kind))throw new VBError('Unsupported module kind: '+m.kind,1002);
-    m.code=String(m.code||'');if(m.code.length>5000000)throw new VBError('Module exceeds 5,000,000-character source limit',7);
-    if(m.kind==='form'&&!m.form)throw new VBError('Form module is missing its form model: '+m.name,1002);if(m.form)validateForm(m.form,m.name);
-  }
-  if(!Number.isInteger(Number(project.settings.tabWidth))||Number(project.settings.tabWidth)<1||Number(project.settings.tabWidth)>32)project.settings.tabWidth=4;else project.settings.tabWidth=Number(project.settings.tabWidth);
-  const grid=Number(project.settings.gridSize);project.settings.gridSize=Number.isFinite(grid)?Math.max(15,Math.min(1200,grid)):120;
-  project.settings.renderer=project.settings.renderer==='canvas2d'?'canvas2d':'auto';
-  if(project.resources)project.resources=normalizeResources(project.resources);
-  return project;
-}
-function uniqueName(project,base='Form',module=null){const names=new Set(module?module.form.controls.map(c=>lower(c.name)):project.modules.map(m=>lower(m.name)));let n=1;while(names.has(lower(base+n)))n++;return base+n;}
-function findModule(project,idOrName){return project.modules.find(m=>m.id===idOrName||lower(m.name)===lower(idOrName));}
-function projectStats(project){return {modules:project.modules.length,forms:project.modules.filter(m=>m.kind==='form').length,controls:project.modules.reduce((n,m)=>n+(m.form?.controls.length||0),0),lines:project.modules.reduce((n,m)=>n+m.code.split('\n').length,0)};}
-
-return {PROJECT_SCHEMA,newId,BASIC_CONTROL_TYPES,EXTENDED_CONTROL_TYPES,CONTROL_DEFAULTS,createControl,createForm,newProject,normalizeProject,uniqueName,findModule,projectStats};
-})();
-
 /* ../language/diagnostics.js */
 __modules[30]=(()=>{
-const {compileModule,validateCompiledModules}=__modules[13];
+const {compileModule,validateCompiledModules}=__modules[17];
 
 /** Clone only compiler inputs, never forms, image assets or the complete workspace.
  * Limits apply to automatic diagnostics, not to the project file/export format. */
@@ -2988,8 +3015,8 @@ return {createDiagnosticWorker,DiagnosticsScheduler};
 
 /* ../ide/diagnostics.js */
 __modules[33]=(()=>{
-const {el,lower}=__modules[2];
-const {findModule}=__modules[29];
+const {el,lower}=__modules[1];
+const {findModule}=__modules[10];
 const {DiagnosticsScheduler}=__modules[32];
 
 
@@ -3030,7 +3057,7 @@ return {installDiagnostics};
 
 /* ../editor/language-service.js */
 __modules[34]=(()=>{
-const { escapeHTML, lower }=__modules[2];
+const { escapeHTML, lower }=__modules[1];
 
 const KEYWORDS='DefBool DefByte DefInt DefLng DefCur DefSng DefDbl DefDate DefStr DefObj DefVar Implements Option Explicit Base Compare Text Binary Private Public Global Friend Static Dim ReDim Preserve Const As New Set Let Call Sub Function Property Get End Exit If Then Else ElseIf For Each To Step Next Do Loop While Until Wend Select Case Is With WithEvents GoTo GoSub Return On Error Resume Stop And Or Xor Not Eqv Imp Mod Like True False Nothing Null Empty ByVal ByRef Optional ParamArray Type TypeOf LSet RSet Enum Implements RaiseEvent Event Open Close Print Write Input Line Append Output Random Binary Access Read Shared Lock Unlock Integer Long Single Double Currency Decimal Byte Boolean String Date Object Variant Me Debug Load Unload'.split(' ');
 const BUILTINS='Abs Array Asc AscW Atn Beep CVErr CallByName IsMissing CBool CByte CCur CDate CDbl CInt CLng CSng CStr CVar Chr ChrW Collection Cos CreateObject Date DateAdd DateDiff DatePart DateSerial DateValue Day Dir DoEvents Environ EOF Erase Err Exp FileLen Fix Format FormatCurrency FormatDateTime FormatNumber FormatPercent FreeFile GetAttr GetSetting Hex Hour IIf InStr InStrRev Int IsArray IsDate IsEmpty IsError IsNull IsNumeric IsObject Join LBound LCase Left Len LoadPicture LoadResString LoadResData LoadResPicture Log LTrim Mid Minute Month MonthName MsgBox InputBox Now Oct Replace RGB Right Rnd Round RTrim SaveSetting Second Sgn Sin Space Split Sqr Str StrComp StrConv String Switch Tan Time Timer TimeSerial TimeValue Trim TypeName UBound UCase Val VarType Weekday WeekdayName Year'.split(' ');
@@ -3061,7 +3088,7 @@ return {KEYWORDS,BUILTINS,MEMBERS,highlightLine,procedures,renameSymbol,formatCo
 
 /* ../runtime/financial.js */
 __modules[35]=(()=>{
-const {VBError}=__modules[0];
+const {VBError}=__modules[2];
 /**
  * Double-precision financial functions for the browser VB runtime.
  * Pure ES module: no DOM, network, filesystem or dynamic evaluation.
@@ -3274,7 +3301,7 @@ return {BUILTIN_SIGNATURES,signatureParameters};
 
 /* ../runtime/error-messages.js */
 __modules[37]=(()=>{
-const {VBError}=__modules[0];
+const {VBError}=__modules[2];
 
 /** Invariant English descriptions for the errors produced by this runtime.
  * Localized Windows resource tables and arbitrary COM HRESULT messages are not
@@ -3309,8 +3336,8 @@ return {errorDescription};
 
 /* ../runtime/strings.js */
 __modules[38]=(()=>{
-const {VBError}=__modules[6];
-const {MISSING,VBArray,coerce,vbString}=__modules[7];
+const {VBError}=__modules[4];
+const {MISSING,VBArray,coerce,vbString}=__modules[6];
 
 
 const invalid=()=>{throw new VBError('Invalid procedure call or argument',5);};
@@ -3404,8 +3431,8 @@ return {stringLibrary};
 
 /* ../runtime/financial-library.js */
 __modules[39]=(()=>{
-const {VBError}=__modules[0];
-const {MISSING,VBArray,numeric}=__modules[7];
+const {VBError}=__modules[2];
+const {MISSING,VBArray,numeric}=__modules[6];
 const {FINANCIAL_FUNCTIONS}=__modules[35];
 
 
@@ -3435,10 +3462,10 @@ return {financialLibrary};
 
 /* ../runtime/resources.js */
 __modules[40]=(()=>{
-const {VBError}=__modules[6];
-const {VBArray,bankersRound,numeric}=__modules[7];
-const {normalizeResources,decodeStringTable}=__modules[23];
-const {fromBase64,rasterDataURL,toBase64,MAX_RESOURCE_BYTES}=__modules[22];
+const {VBError}=__modules[4];
+const {VBArray,bankersRound,numeric}=__modules[6];
+const {normalizeResources,decodeStringTable}=__modules[9];
+const {fromBase64,rasterDataURL,toBase64,MAX_RESOURCE_BYTES}=__modules[8];
 
 
 
@@ -3470,8 +3497,8 @@ return {ResourceStore};
 
 /* ../data/recordset.js */
 __modules[41]=(()=>{
-const {VBError}=__modules[6];
-const {VBArray,VBCurrency,coerce,bankersRound,numeric,binary,truth}=__modules[7];
+const {VBError}=__modules[4];
+const {VBArray,VBCurrency,coerce,bankersRound,numeric,binary,truth}=__modules[6];
 
 
 // Disconnected client-side provider. There is deliberately no SQL/COM/network fallback.
@@ -3585,14 +3612,14 @@ const {errorDescription}=__modules[37];
 const {stringLibrary}=__modules[38];
 const {financialLibrary}=__modules[39];
 const {ResourceStore}=__modules[40];
-const {asDate,dateAdd,dateDiff,datePart,dateSerial,timeSerial,weekday,weekdayName,monthName}=__modules[5];
+const {asDate,dateAdd,dateDiff,datePart,dateSerial,timeSerial,weekday,weekdayName,monthName}=__modules[3];
 const {BUILTIN_SIGNATURES,signatureParameters}=__modules[36];
 const {DisconnectedRecordset}=__modules[41];
-const {recordLength}=__modules[21];
-const { VBError }=__modules[6];
-const { lower }=__modules[2];
-const { NOTHING, MISSING, VBErrorValue, explicitErrorValue, VBArray, VBCollection, VBDictionary, VBCurrency, VBDecimal, decimal, numeric, vbString, coerce, bankersRound, truth, binary }=__modules[7];
-const {VB_CONSTANTS}=__modules[3];
+const {recordLength}=__modules[7];
+const { VBError }=__modules[4];
+const { lower }=__modules[1];
+const { NOTHING, MISSING, VBErrorValue, explicitErrorValue, VBArray, VBCollection, VBDictionary, VBCurrency, VBDecimal, decimal, numeric, vbString, coerce, bankersRound, truth, binary }=__modules[6];
+const {VB_CONSTANTS}=__modules[11];
 
 
 
@@ -3672,11 +3699,11 @@ return {MemoryRecordset,createLibrary,VB_CONSTANTS};
 
 /* ../editor/intelligence.js */
 __modules[43]=(()=>{
-const {lower}=__modules[2];
+const {lower}=__modules[1];
 const {KEYWORDS,BUILTINS}=__modules[34];
 const {BUILTIN_SIGNATURES}=__modules[36];
 const {VB_CONSTANTS}=__modules[42];
-const {CONTROL_DEFAULTS,createControl,createForm}=__modules[29];
+const {CONTROL_DEFAULTS,createControl,createForm}=__modules[10];
 
 
 
@@ -3876,7 +3903,7 @@ return {FindIndex,replaceMatches,moveSourceSelection};
 
 /* ../editor/assistance.js */
 __modules[46]=(()=>{
-const {el,clone,lower}=__modules[2];
+const {el,clone,lower}=__modules[1];
 const {wordAt,maskSource}=__modules[43];
 const {positionAt,offsetAt,textChange,mapOffset}=__modules[44];
 const {moveSourceSelection}=__modules[45];
@@ -4022,10 +4049,10 @@ return {CodeAssistance,SourceDragManager};
 
 /* ../editor/ide-integration.js */
 __modules[47]=(()=>{
-const {hasUIDialog}=__modules[1];
+const {hasUIDialog}=__modules[0];
 const {CodeAssistance,SourceDragManager}=__modules[46];
-const {el}=__modules[2];
-const {showMenu}=__modules[27];
+const {el}=__modules[1];
+const {showMenu}=__modules[28];
 const {positionAt,mapOffset}=__modules[44];
 
 
@@ -4131,10 +4158,10 @@ return {DOCK_EDGES,normalizeDockRect,constrainDockRect,DockLayout};
 
 /* ../ide/docking.js */
 __modules[50]=(()=>{
-const {uiDocument}=__modules[1];
+const {uiDocument}=__modules[0];
 const {keyboardTransaction}=__modules[48];
-const {el,download}=__modules[2];
-const {showMenu,promptDialog,alertDialog,modal}=__modules[27];
+const {el,download}=__modules[1];
+const {showMenu,promptDialog,alertDialog,modal}=__modules[28];
 const {DockLayout,DOCK_EDGES,constrainDockRect}=__modules[49];
 
 
@@ -4270,11 +4297,11 @@ return {DockManager,installDocking};
 
 /* ../ide/command-bars.js */
 __modules[51]=(()=>{
-const {uiDocument}=__modules[1];
+const {uiDocument}=__modules[0];
 const {keyboardTransaction}=__modules[48];
-const {el}=__modules[2];
-const {icon,showMenu,modal,promptDialog,alertDialog,tabbedPages}=__modules[27];
-const {CommandBarLayout,COMMANDS}=__modules[26];
+const {el}=__modules[1];
+const {icon,showMenu,modal,promptDialog,alertDialog,tabbedPages}=__modules[28];
+const {CommandBarLayout,COMMANDS}=__modules[27];
 
 
 
@@ -4347,12 +4374,12 @@ return {CommandBars,installCommandBars};
 
 /* ../ide/debug-windows.js */
 __modules[52]=(()=>{
-const {hasUIDialog}=__modules[1];
-const {el,lower}=__modules[2];
-const {findModule,newId}=__modules[29];
+const {hasUIDialog}=__modules[0];
+const {el,lower}=__modules[1];
+const {findModule,newId}=__modules[10];
 const {procedures}=__modules[34];
 const {wordAt}=__modules[43];
-const {modal,promptDialog,alertDialog,showMenu}=__modules[27];
+const {modal,promptDialog,alertDialog,showMenu}=__modules[28];
 
 
 
@@ -4446,7 +4473,7 @@ return {DebugValueTree,DebugWorkbench,installDebugWindows};
 __modules[53]=(()=>{
 const {scanDeclarations}=__modules[43];
 const {KEYWORDS}=__modules[34];
-const {lower}=__modules[2];
+const {lower}=__modules[1];
 
 
 
@@ -4500,13 +4527,13 @@ return {addProcedureSource,readProcedureAttributes,updateProcedureAttributes,for
 
 /* ../ide/ide-tools.js */
 __modules[54]=(()=>{
-const {hasUIDialog}=__modules[1];
-const {el,clone,lower,download}=__modules[2];
+const {hasUIDialog}=__modules[0];
+const {el,clone,lower,download}=__modules[1];
 const {scanDeclarations,wordAt}=__modules[43];
 const {positionAt}=__modules[44];
-const {THEMES,normalizeAppearance,colorValue}=__modules[24];
+const {THEMES,normalizeAppearance,colorValue}=__modules[25];
 const {addProcedureSource,readProcedureAttributes,updateProcedureAttributes,formatControls}=__modules[53];
-const {modal,alertDialog,tabbedPages}=__modules[27];
+const {modal,alertDialog,tabbedPages}=__modules[28];
 
 
 
@@ -4560,7 +4587,7 @@ return {IdeTools,installIdeTools};
 
 /* ../graphics/surface.js */
 __modules[55]=(()=>{
-const { colorValue, getTheme }=__modules[24];
+const { colorValue, getTheme }=__modules[25];
 
 /** Demand-rendered 2D primitives: WebGPU triangles, Canvas2D fallback, DOM text. */
 const surfaces = new WeakMap();
@@ -4715,8 +4742,8 @@ return {browserBounds,normalizeBrowserWindows};
 
 /* ../theme/tooltip.js */
 __modules[57]=(()=>{
-const {el}=__modules[2];
-const {getTheme}=__modules[24];
+const {el}=__modules[1];
+const {getTheme}=__modules[25];
 
 
 /** Delegated tooltips: system-color palette, no browser-native balloon or event listener per tool. */
@@ -4732,10 +4759,10 @@ return {ClassicTooltips};
 
 /* ../ide/browser-window-host.js */
 __modules[58]=(()=>{
-const {registerUIDocument,uiDocument}=__modules[1];
+const {registerUIDocument,uiDocument}=__modules[0];
 const {browserBounds, normalizeBrowserWindows}=__modules[56];
 const {ClassicTooltips}=__modules[57];
-const {closeMenu}=__modules[25];
+const {closeMenu}=__modules[26];
 
 
 
@@ -4984,13 +5011,13 @@ return {BrowserWindowHost};
 
 /* ../ide/browser-windows.js */
 __modules[59]=(()=>{
-const {refreshToolLists}=__modules[20];
+const {refreshToolLists}=__modules[24];
 const {refreshGraphicsSurfaces}=__modules[55];
 const {BrowserWindowHost}=__modules[58];
-const {el}=__modules[2];
-const {hasUIDialog}=__modules[1];
-const {menuIsOpen, closeMenu}=__modules[25];
-const {showMenu}=__modules[27];
+const {el}=__modules[1];
+const {hasUIDialog}=__modules[0];
+const {menuIsOpen, closeMenu}=__modules[26];
+const {showMenu}=__modules[28];
 
 
 
@@ -5205,7 +5232,7 @@ return {normalizeEditorView,snapshotEditorView,restoreEditorView};
 __modules[61]=(()=>{
 const {normalizeBrowserWindows}=__modules[56];
 const {DockLayout}=__modules[49];
-const {CommandBarLayout}=__modules[26];
+const {CommandBarLayout}=__modules[27];
 const {normalizeEditorView}=__modules[60];
 
 
@@ -5243,9 +5270,9 @@ return {MODELESS_TOOLS,normalizeWindowProfile,parseWindowProfiles};
 __modules[62]=(()=>{
 const {snapshotEditorView,restoreEditorView}=__modules[60];
 const {normalizeWindowProfile,parseWindowProfiles,MODELESS_TOOLS}=__modules[61];
-const {CommandBarLayout}=__modules[26];
-const {el,download}=__modules[2];
-const {modal,alertDialog}=__modules[27];
+const {CommandBarLayout}=__modules[27];
+const {el,download}=__modules[1];
+const {modal,alertDialog}=__modules[28];
 
 
 
@@ -5297,12 +5324,12 @@ return {installWorkspaceState};
 
 /* ../project/formats.js */
 __modules[63]=(()=>{
-const {readRES,writeRES}=__modules[23];
-const {newId,createForm,newProject,normalizeProject}=__modules[29];
-const {lower}=__modules[2];
-const {VBError}=__modules[6];
-const {decodeANSI,encodeANSI}=__modules[21];
-const {cleanProjectPath,relativeProjectPath,resolveProjectPath,hydrateResources,prepareResources,toBase64}=__modules[22];
+const {readRES,writeRES}=__modules[9];
+const {newId,createForm,newProject,normalizeProject}=__modules[10];
+const {lower}=__modules[1];
+const {VBError}=__modules[4];
+const {decodeANSI,encodeANSI}=__modules[7];
+const {cleanProjectPath,relativeProjectPath,resolveProjectPath,hydrateResources,prepareResources,toBase64}=__modules[8];
 
 
 
@@ -5400,8 +5427,8 @@ return {crc32,writeZip,readZip};
 
 /* ../project/examples.js */
 __modules[65]=(()=>{
-const { newProject, createForm, createControl, newId }=__modules[29];
-const {setResourceString, setResource}=__modules[23];
+const { newProject, createForm, createControl, newId }=__modules[10];
+const {setResourceString, setResource}=__modules[9];
 
 
 function c(type,name,x,y,w,h,props={},parent=null){const node=createControl(type,name,x*15,y*15);Object.assign(node.properties,{Width:w*15,Height:h*15,...props});node.parent=parent;return node;}
@@ -6105,9 +6132,9 @@ return {RUNTIME_SOURCE,RUNTIME_CSS};
 
 /* ../exporter/exporter.js */
 __modules[67]=(()=>{
-const {themeId}=__modules[24];
-const { compileProject }=__modules[13];
-const { escapeHTML, VERSION }=__modules[2];
+const {themeId}=__modules[25];
+const { compileProject }=__modules[17];
+const { escapeHTML, VERSION }=__modules[1];
 const { RUNTIME_SOURCE, RUNTIME_CSS }=__modules[66];
 
 
@@ -6126,7 +6153,7 @@ return {jsonForHTML,exportApplication,RUNTIME_VERSION};
 
 /* ../controls/form-window.js */
 __modules[68]=(()=>{
-const {el}=__modules[2];
+const {el}=__modules[1];
 
 /** Pointer-capture lifecycle shared by runtime form moving and resizing. */
 function installFormWindow(form){
@@ -6152,8 +6179,8 @@ return {installFormWindow};
 
 /* ../controls/native-widgets.js */
 __modules[69]=(()=>{
-const {el}=__modules[2];
-const {getTheme}=__modules[24];
+const {el}=__modules[1];
+const {getTheme}=__modules[25];
 
 
 /** Bounds-only model used by the classic two-button spin control. */
@@ -6228,7 +6255,7 @@ return {stepperValue,ClassicUpDown,ClassicCombo};
 
 /* ../controls/scrollbar.js */
 __modules[70]=(()=>{
-const {el}=__modules[2];
+const {el}=__modules[1];
 
 /** Scroll-bar geometry is independent from DOM and remains stable at fractional DPR. */
 function scrollbarGeometry(min,max,value,length,page=1){
@@ -6269,8 +6296,8 @@ return {scrollbarGeometry,ClassicScrollbar};
 
 /* ../controls/rtf.js */
 __modules[71]=(()=>{
-const {VBError}=__modules[6];
-const {decodeANSI}=__modules[21];
+const {VBError}=__modules[4];
+const {decodeANSI}=__modules[7];
 /** An original bounded RTF reader/writer and UTF-16 rich-text run model.
  * HTML, native OLE objects, embedded code and external links are never executed.
  */
@@ -6381,7 +6408,7 @@ return {RTF_LIMITS,RICH_DEFAULTS,richText,parseRTF,writeRTF,RichTextDocument};
 /* ../controls/richtext.js */
 __modules[72]=(()=>{
 const {parseRTF,RichTextDocument,richText}=__modules[71];
-const {VBError}=__modules[6];
+const {VBError}=__modules[4];
 const {oleColor}=__modules[55];
 /** RichTextBox DOM adapter. All content is constructed as text nodes, never innerHTML. */
 
@@ -6471,8 +6498,8 @@ return {RichTextController,RICH_SELECTION_PROPERTIES};
 
 /* ../controls/collections.js */
 __modules[73]=(()=>{
-const { VBError }=__modules[6];
-const { lower }=__modules[2];
+const { VBError }=__modules[4];
+const { lower }=__modules[1];
 
 
 class ControlCollection {
@@ -6522,17 +6549,17 @@ __modules[74]=(()=>{
 const {installFormWindow}=__modules[68];
 const {ClassicCombo,ClassicUpDown}=__modules[69];
 const {ClassicScrollbar}=__modules[70];
-const {showMenu : openClassicMenu,closeMenu,menuIsOpen}=__modules[25];
+const {showMenu : openClassicMenu,closeMenu,menuIsOpen}=__modules[26];
 const {RichTextController,RICH_SELECTION_PROPERTIES}=__modules[72];
 const {parseRTF}=__modules[71];
-const { el, lower, clone }=__modules[2];
-const { VBError }=__modules[6];
-const { NOTHING, Ref, Cell, truth, VBArray, vbString }=__modules[7];
+const { el, lower, clone }=__modules[1];
+const { VBError }=__modules[4];
+const { NOTHING, Ref, Cell, truth, VBArray, vbString }=__modules[6];
 const { MemoryRecordset }=__modules[42];
 const { GraphicsSurface }=__modules[55];
-const { cssColor : oleColor, fontFamily, getTheme }=__modules[24];
-const { icon, controlIcon }=__modules[19];
-const { CONTROL_DEFAULTS, createControl, newId }=__modules[29];
+const { cssColor : oleColor, fontFamily, getTheme }=__modules[25];
+const { icon, controlIcon }=__modules[23];
+const { CONTROL_DEFAULTS, createControl, newId }=__modules[10];
 const { ControlCollection, TreeNodes, ListItems, ColumnHeaders, ToolbarButtons, StatusPanels, TabItems, ImageItems, ControlArray }=__modules[73];
 
 
@@ -6847,11 +6874,11 @@ return {NONVISUAL_TYPES,DEFAULT_EVENTS,CONTROL_EVENTS,BrowserControl,BrowserForm
 
 /* ../designer/designer.js */
 __modules[75]=(()=>{
-const { Signal, el, clone, lower }=__modules[2];
-const { createControl, newId, uniqueName }=__modules[29];
+const { Signal, el, clone, lower }=__modules[1];
+const { createControl, newId, uniqueName }=__modules[10];
 const { BrowserForm }=__modules[74];
 const { GraphicsSurface }=__modules[55];
-const {applyTheme}=__modules[24];
+const {applyTheme}=__modules[25];
 
 
 
@@ -6919,7 +6946,7 @@ return {FormDesigner};
 
 /* ../editor/virtual-input.js */
 __modules[76]=(()=>{
-const {el}=__modules[2];
+const {el}=__modules[1];
 const {offsetAt,positionAt}=__modules[44];
 
 
@@ -7095,11 +7122,11 @@ const {FindIndex,replaceMatches}=__modules[45];
 const {VirtualTextInput}=__modules[76];
 const {updateSourceIndex,replacementChange,inputChange,HighlightCache}=__modules[77];
 const {EditorIntelligence,wordAt}=__modules[43];
-const {tokenize}=__modules[6];
+const {tokenize}=__modules[4];
 const {DEFAULT_EVENTS,CONTROL_EVENTS}=__modules[74];
-const {Signal,el,lower}=__modules[2];
-const {icon}=__modules[19];
-const {normalizeAppearance}=__modules[24];
+const {Signal,el,lower}=__modules[1];
+const {icon}=__modules[23];
+const {normalizeAppearance}=__modules[25];
 const {indexSource,positionAt,offsetAt,sourceRange,replaceRange,textChange,mapOffset}=__modules[44];
 const {KEYWORDS,BUILTINS,MEMBERS,highlightLine,procedures,formatCode}=__modules[34];
 
@@ -7293,9 +7320,9 @@ return {SourceEditor};
 
 /* ../ide/property-editors.js */
 __modules[79]=(()=>{
-const {el}=__modules[2];
-const {SYSTEM_COLOR_NAMES,cssColor,colorValue,getTheme}=__modules[24];
-const {modal,tabbedPages}=__modules[27];
+const {el}=__modules[1];
+const {SYSTEM_COLOR_NAMES,cssColor,colorValue,getTheme}=__modules[25];
+const {modal,tabbedPages}=__modules[28];
 
 
 
@@ -7332,10 +7359,10 @@ return {oleHex,parsePropertyNumber,showColorPalette,fontDialog};
 
 /* ../ide/properties.js */
 __modules[80]=(()=>{
-const {el}=__modules[2];
-const {CONTROL_DEFAULTS}=__modules[29];
-const {cssColor}=__modules[24];
-const {modal,alertDialog,resizeHandle,icon}=__modules[27];
+const {el}=__modules[1];
+const {CONTROL_DEFAULTS}=__modules[10];
+const {cssColor}=__modules[25];
+const {modal,alertDialog,resizeHandle,icon}=__modules[28];
 const {oleHex,parsePropertyNumber,showColorPalette,fontDialog}=__modules[79];
 
 
@@ -7431,9 +7458,9 @@ return {PropertyInspector};
 /* ../ide/object-catalog.js */
 __modules[81]=(()=>{
 const {readProcedureAttributes}=__modules[53];
-const {compileModule}=__modules[13];
+const {compileModule}=__modules[17];
 const {BUILTIN_SIGNATURES}=__modules[36];
-const {BASIC_CONTROL_TYPES,EXTENDED_CONTROL_TYPES,createControl,createForm}=__modules[29];
+const {BASIC_CONTROL_TYPES,EXTENDED_CONTROL_TYPES,createControl,createForm}=__modules[10];
 const {procedures,defaultEventSignature}=__modules[34];
 const {DEFAULT_EVENTS}=__modules[74];
 
@@ -7479,10 +7506,10 @@ return {buildObjectCatalog,searchCatalog};
 
 /* ../ide/object-browser.js */
 __modules[82]=(()=>{
-const {el}=__modules[2];
-const {ToolList}=__modules[20];
+const {el}=__modules[1];
+const {ToolList}=__modules[24];
 const {buildObjectCatalog,searchCatalog}=__modules[81];
-const {resizeHandle,icon}=__modules[27];
+const {resizeHandle,icon}=__modules[28];
 
 
 
@@ -7618,10 +7645,10 @@ return {normalizeBookmarks,mapBookmarks,navigateBookmark,searchProject,validateS
 
 /* ../ide/project-search.js */
 __modules[84]=(()=>{
-const {el,clone}=__modules[2];
+const {el,clone}=__modules[1];
 const {searchProject,replaceProject,validateSearch}=__modules[83];
-const {ToolList}=__modules[20];
-const {icon}=__modules[27];
+const {ToolList}=__modules[24];
+const {icon}=__modules[28];
 
 
 
@@ -7659,8 +7686,8 @@ return {ProjectSearch};
 /* ../ide/mdi.js */
 __modules[85]=(()=>{
 const {keyboardTransaction}=__modules[48];
-const {el}=__modules[2];
-const {icon,showMenu}=__modules[27];
+const {el}=__modules[1];
+const {icon,showMenu}=__modules[28];
 
 /** Browser-native MDI host. Each document owns a live editor/designer, not a bitmap. */
 
@@ -7739,14 +7766,14 @@ return {constrainWindow,MdiHost};
 /* ../ide/documents.js */
 __modules[86]=(()=>{
 const {textChange}=__modules[44];
-const {el,clone,lower}=__modules[2];
-const {findModule}=__modules[29];
+const {el,clone,lower}=__modules[1];
+const {findModule}=__modules[10];
 const {FormDesigner}=__modules[75];
 const {SourceEditor}=__modules[78];
 const {DEFAULT_EVENTS}=__modules[74];
 const {MdiHost}=__modules[85];
 const {mapBookmarks}=__modules[83];
-const {icon,showMenu}=__modules[27];
+const {icon,showMenu}=__modules[28];
 
 
 
@@ -7798,9 +7825,9 @@ return {IdeDocuments};
 
 /* ../ide/main.js */
 __modules[87]=(()=>{
-const {installNativeBuild}=__modules[17];
-const {installResourceEditor}=__modules[28];
-const {readRES,writeRES,setResource,setResourceString}=__modules[23];
+const {installNativeBuild}=__modules[21];
+const {installResourceEditor}=__modules[29];
+const {readRES,writeRES,setResource,setResourceString}=__modules[9];
 const {installDiagnostics}=__modules[33];
 const {installEditorFeatures}=__modules[47];
 const {installDocking}=__modules[50];
@@ -7808,29 +7835,29 @@ const {installCommandBars}=__modules[51];
 const {installDebugWindows}=__modules[52];
 const {installIdeTools}=__modules[54];
 const {installBrowserWindows}=__modules[59];
-const {hasUIDialog,uiDocument}=__modules[1];
+const {hasUIDialog,uiDocument}=__modules[0];
 const {installWorkspaceState}=__modules[62];
-const {fromBase64,toBase64}=__modules[22];
-const { Signal, History, el, clone, lower, safeName, download, debounce, VERSION }=__modules[2];
-const { newProject, createForm, createControl, normalizeProject, newId, uniqueName, findModule, BASIC_CONTROL_TYPES, EXTENDED_CONTROL_TYPES, projectStats }=__modules[29];
+const {fromBase64,toBase64}=__modules[8];
+const { Signal, History, el, clone, lower, safeName, download, debounce, VERSION }=__modules[1];
+const { newProject, createForm, createControl, normalizeProject, newId, uniqueName, findModule, BASIC_CONTROL_TYPES, EXTENDED_CONTROL_TYPES, projectStats }=__modules[10];
 const { importFiles, sourceFiles }=__modules[63];
 const { readZip, writeZip }=__modules[64];
 const { EXAMPLES }=__modules[65];
-const { compileProject }=__modules[13];
+const { compileProject }=__modules[17];
 const { exportApplication }=__modules[67];
 const { FormDesigner }=__modules[75];
 const { SourceEditor }=__modules[78];
 const { procedures, renameSymbol, defaultEventSignature, BUILTINS, MEMBERS }=__modules[34];
 const { DEFAULT_EVENTS, CONTROL_EVENTS }=__modules[74];
 const { PropertyInspector }=__modules[80];
-const { icon, controlIcon, showMenu, closeMenu, modal, alertDialog, promptDialog, makeDraggable, resizeHandle, tabbedPages }=__modules[27];
+const { icon, controlIcon, showMenu, closeMenu, modal, alertDialog, promptDialog, makeDraggable, resizeHandle, tabbedPages }=__modules[28];
 const {ClassicTooltips}=__modules[57];
 const {ObjectBrowser}=__modules[82];
 const {ProjectSearch}=__modules[84];
 const {mapBookmarks,normalizeBookmarks,navigateBookmark}=__modules[83];
 const {IdeDocuments}=__modules[86];
-const {THEMES,applyTheme,normalizeAppearance}=__modules[24];
-const {menuIsOpen,mnemonicText}=__modules[25];
+const {THEMES,applyTheme,normalizeAppearance}=__modules[25];
+const {menuIsOpen,mnemonicText}=__modules[26];
 
 
 
@@ -8750,9 +8777,9 @@ return {McpServer,bindMcpPort};
 /* ide-adapter.js */
 __modules[92]=(()=>{
 const {McpError, checkAbort, isRecord, awaitAbort}=__modules[88];
-const {clone}=__modules[2];
-const {normalizeProject, findModule, createForm, newId, projectStats}=__modules[29];
-const {compileProject}=__modules[13];
+const {clone}=__modules[1];
+const {normalizeProject, findModule, createForm, newId, projectStats}=__modules[10];
+const {compileProject}=__modules[17];
 const {exportApplication}=__modules[67];
 
 
@@ -9107,8 +9134,8 @@ return {bearerChallenge,McpOAuth};
 
 /* studio.js */
 __modules[95]=(()=>{
-const {el, download}=__modules[2];
-const {modal, tabbedPages}=__modules[27];
+const {el, download}=__modules[1];
+const {modal, tabbedPages}=__modules[28];
 const {MCP_VERSION, McpError, checkAbort, httpURL, isRecord}=__modules[88];
 const {McpClient}=__modules[90];
 const {McpServer, bindMcpPort}=__modules[91];
