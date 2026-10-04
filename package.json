@@ -25,7 +25,9 @@
     "build:windows": "node tools/build-windows.mjs",
     "build:classic": "node tools/build-classic.mjs",
     "test:native": "node --test tests/native-*.test.mjs",
-    "fixtures:native": "node tools/native-fixtures.mjs"
+    "fixtures:native": "node tools/native-fixtures.mjs",
+    "build:win32": "node tools/build-win32.mjs",
+    "test:win32": "node --test tests/win32-*.test.mjs"
   },
   "engines": {
     "node": ">=22"
