@@ -25,11 +25,11 @@ jobs:
             Check ($fault[0]+' exits with documented error') ($p.WaitForExit(15000) -and $p.ExitCode -eq $fault[1])
           '@
           $after=@'
-            $okButton=[AotWindowsTest]::GetDlgItem($errorWindow,1)
-            Write-Host ('DIALOG '+$errorWindow+' button='+$okButton+' enabled='+[AotWindowsTest]::IsWindowEnabled($okButton))
-            [AotWindowsTest]::PostMessage($errorWindow,0x111,[IntPtr]1,$okButton)|Out-Null
+            foreach($c in [AotWindowsTest]::Children($errorWindow)){Write-Host ('ERROR CHILD '+$c+' '+[AotWindowsTest]::Class($c)+' '+[AotWindowsTest]::Text($c))}
+            Write-Host ('ERROR WINDOW '+$errorWindow+' '+[AotWindowsTest]::Text($errorWindow))
+            $posted=[AotWindowsTest]::PostMessage($errorWindow,0x10,[IntPtr]::Zero,[IntPtr]::Zero)
             $exited=$p.WaitForExit(15000)
-            Write-Host ('FAULT '+$fault[0]+' exited='+$exited+' actual='+$p.ExitCode+' expected='+$fault[1])
+            Write-Host ('FAULT '+$fault[0]+' close='+$posted+' exited='+$exited+' actual='+$p.ExitCode+' expected='+$fault[1])
             Check ($fault[0]+' exits with documented error') ($exited -and $p.ExitCode -eq $fault[1])
           '@
           if(-not $text.Contains($before)){throw 'Diagnostic source anchor mismatch'}
