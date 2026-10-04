@@ -20,9 +20,10 @@ public static class AotWindowsTest {
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+ [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", CharSet=CharSet.Unicode)] public static extern IntPtr SendTextMessage(IntPtr h, uint m, IntPtr w, StringBuilder text, uint flags, uint timeout, out UIntPtr result);
  public static IntPtr[] Windows(int pid) { var list=new List<IntPtr>(); EnumWindows((h,p)=>{uint id;GetWindowThreadProcessId(h,out id);if(id==pid)list.Add(h);return true;},IntPtr.Zero);return list.ToArray(); }
  public static IntPtr[] Children(IntPtr parent) {var list=new List<IntPtr>();EnumChildWindows(parent,(h,p)=>{list.Add(h);return true;},IntPtr.Zero);return list.ToArray();}
- public static string Text(IntPtr h){var b=new StringBuilder(4096);GetWindowText(h,b,b.Capacity);return b.ToString();}
+ public static string Text(IntPtr h){var b=new StringBuilder(4096);UIntPtr result;return SendTextMessage(h,0x0D,(IntPtr)b.Capacity,b,2,1000,out result)==IntPtr.Zero?"":b.ToString();}
  public static string Class(IntPtr h){var b=new StringBuilder(256);GetClassName(h,b,b.Capacity);return b.ToString();}
 }
 '@
