@@ -36,7 +36,9 @@ function Launch([string]$Name) {
  # Put just the EXE in an empty folder: no adjacent JS, runtimes, DLLs, or project files.
  $clean=Join-Path ([IO.Path]::GetTempPath()) ('vb6-aot-'+[Guid]::NewGuid().ToString('N'));[IO.Directory]::CreateDirectory($clean)|Out-Null
  $isolated=Join-Path $clean ($Name+'.exe');Copy-Item $file $isolated
- $p=Start-Process -FilePath $isolated -WorkingDirectory $clean -PassThru;$processes.Add($p);return $p
+ $p=Start-Process -FilePath $isolated -WorkingDirectory $clean -PassThru
+ # Retain the process handle before exit so ExitCode remains available after dialog dismissal.
+ $null=$p.Handle;$processes.Add($p);return $p
 }
 try {
  $p=Launch 'AotArithmetic'
@@ -96,8 +98,12 @@ try {
   Until { $script:errorWindow=([AotWindowsTest]::Windows($p.Id)|Where-Object { [AotWindowsTest]::Class($_) -eq '#32770' }|Select-Object -First 1);$script:errorWindow -and [AotWindowsTest]::IsWindowVisible($script:errorWindow) } ('runtime diagnostic '+$fault[0])
   $text=@([AotWindowsTest]::Children($errorWindow)|ForEach-Object { [AotWindowsTest]::Text($_) }) -join ' '
   Check ($fault[0]+' error message') ($text.Contains('Run-time error '+$fault[1]))
-  [AotWindowsTest]::PostMessage([AotWindowsTest]::GetDlgItem($errorWindow,1),0xf5,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
-  Check ($fault[0]+' exits with documented error') ($p.WaitForExit(15000) -and $p.ExitCode -eq $fault[1])
+  # Dismiss the verified dialog belonging to this test process; do not assume an OK button ID.
+  $posted=[AotWindowsTest]::PostMessage($errorWindow,0x10,[IntPtr]::Zero,[IntPtr]::Zero)
+  if(-not $posted){throw ('Could not dismiss runtime diagnostic '+$fault[0])}
+  $exited=$p.WaitForExit(15000)
+  Write-Host ('FAULT '+$fault[0]+' exited='+$exited+' actual='+$p.ExitCode+' expected='+$fault[1])
+  Check ($fault[0]+' exits with documented error') ($exited -and $p.ExitCode -eq $fault[1])
  }
  $report=@{ok=$true;architecture=$env:PROCESSOR_ARCHITECTURE;checks=$checks}
 } catch { $report=@{ok=$false;checks=$checks;error=$_.ToString()};throw }
