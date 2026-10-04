@@ -19,8 +19,8 @@ public static class WindowsVariantOracle {
   [DllImport(DLL)] static extern int VarImp(IntPtr a,IntPtr b,IntPtr r);
   [DllImport(DLL)] static extern int VarCat(IntPtr a,IntPtr b,IntPtr r);
   [DllImport(DLL)] static extern int VarCmp(IntPtr a,IntPtr b,int lcid,uint flags);
-  [DllImport("kernel32.dll",SetLastError=true)] static extern int WideCharToMultiByte(uint cp,uint flags,[MarshalAs(UnmanagedType.LPWStr)] string text,int length,byte[] bytes,int count,IntPtr replacement,out bool usedDefault);
-  [DllImport("kernel32.dll",SetLastError=true)] static extern int MultiByteToWideChar(uint cp,uint flags,byte[] bytes,int length,[Out] char[] text,int count);
+  [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode,ExactSpelling=true)] static extern int WideCharToMultiByte(uint cp,uint flags,string text,int length,IntPtr bytes,int count,IntPtr replacement,IntPtr usedDefault);
+  [DllImport("kernel32.dll",SetLastError=true,CharSet=CharSet.Unicode,ExactSpelling=true)] static extern int MultiByteToWideChar(uint cp,uint flags,byte[] bytes,int length,IntPtr text,int count);
   static readonly CultureInfo Inv=CultureInfo.InvariantCulture;
   public class Result {public int type; public string value; public int hresult;}
   static IntPtr Allocate(){IntPtr p=Marshal.AllocCoTaskMem(32);for(int i=0;i<32;i++)Marshal.WriteByte(p,i,0);return p;}
@@ -42,6 +42,16 @@ public static class WindowsVariantOracle {
       return new Result{type=type,value=value,hresult=hr};
     }finally{VariantClear(a);VariantClear(b);VariantClear(r);Marshal.FreeCoTaskMem(a);Marshal.FreeCoTaskMem(b);Marshal.FreeCoTaskMem(r);}
   }
-  public static string Encode(int cp,string text){bool used;int n=WideCharToMultiByte((uint)cp,cp==65001?0u:0x400u,text,text.Length,null,0,IntPtr.Zero,out used);if(n==0||used)throw new InvalidOperationException("Unmappable string: "+Marshal.GetLastWin32Error());byte[] bytes=new byte[n];if(WideCharToMultiByte((uint)cp,cp==65001?0u:0x400u,text,text.Length,bytes,n,IntPtr.Zero,out used)!=n||used)throw new InvalidOperationException("Encoding failed");return BitConverter.ToString(bytes).Replace("-","").ToLowerInvariant();}
-  public static string Decode(int cp,string hex){byte[] bytes=new byte[hex.Length/2];for(int i=0;i<bytes.Length;i++)bytes[i]=byte.Parse(hex.Substring(i*2,2),NumberStyles.HexNumber);int n=MultiByteToWideChar((uint)cp,8,bytes,bytes.Length,null,0);if(n==0)throw new InvalidOperationException("Invalid sequence");char[] chars=new char[n];if(MultiByteToWideChar((uint)cp,8,bytes,bytes.Length,chars,n)!=n)throw new InvalidOperationException("Decoding failed");return new string(chars);}
+  public static string Encode(int cp,string text){
+    if(text.Length==0)return "";IntPtr used=cp==65001?IntPtr.Zero:Marshal.AllocHGlobal(4),buffer=IntPtr.Zero;
+    try{if(used!=IntPtr.Zero)Marshal.WriteInt32(used,0);uint flags=cp==65001?0x80u:0x400u;int n=WideCharToMultiByte((uint)cp,flags,text,text.Length,IntPtr.Zero,0,IntPtr.Zero,used);
+      if(n==0||(used!=IntPtr.Zero&&Marshal.ReadInt32(used)!=0))throw new InvalidOperationException("Unmappable string: "+Marshal.GetLastWin32Error());buffer=Marshal.AllocHGlobal(n);if(used!=IntPtr.Zero)Marshal.WriteInt32(used,0);
+      if(WideCharToMultiByte((uint)cp,flags,text,text.Length,buffer,n,IntPtr.Zero,used)!=n||(used!=IntPtr.Zero&&Marshal.ReadInt32(used)!=0))throw new InvalidOperationException("Encoding failed");byte[] bytes=new byte[n];Marshal.Copy(buffer,bytes,0,n);return BitConverter.ToString(bytes).Replace("-","").ToLowerInvariant();
+    }finally{if(buffer!=IntPtr.Zero)Marshal.FreeHGlobal(buffer);if(used!=IntPtr.Zero)Marshal.FreeHGlobal(used);}
+  }
+  public static string Decode(int cp,string hex){
+    if(hex.Length==0)return "";if(hex.Length%2!=0)throw new ArgumentException("Odd hex length");byte[] bytes=new byte[hex.Length/2];for(int i=0;i<bytes.Length;i++)bytes[i]=byte.Parse(hex.Substring(i*2,2),NumberStyles.HexNumber);
+    int n=MultiByteToWideChar((uint)cp,8,bytes,bytes.Length,IntPtr.Zero,0);if(n==0)throw new InvalidOperationException("Invalid sequence: "+Marshal.GetLastWin32Error());IntPtr buffer=Marshal.AllocHGlobal(checked(n*2));
+    try{if(MultiByteToWideChar((uint)cp,8,bytes,bytes.Length,buffer,n)!=n)throw new InvalidOperationException("Decoding failed");return Marshal.PtrToStringUni(buffer,n);}finally{Marshal.FreeHGlobal(buffer);}
+  }
 }
