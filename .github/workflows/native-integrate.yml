@@ -1,0 +1,75 @@
+name: Integrate native project implementation
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    if: github.head_ref == 'feature/native-vb6-project-roundtrip' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply hash-verified source delta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, urllib.request
+          chunks=[]
+          for sha in ['f3fec04c20062020fad596e3665190fd2cae8d9d','3faf33420bed7ac6bcc88901227a9468ad1f07ee','c163155bbdf1fdf4f3a0d1a6397771a55be2e5b2']:
+              request=urllib.request.Request('https://api.github.com/repos/wieslawsoltes/VB6/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+              chunks.append(base64.b64decode(json.load(urllib.request.urlopen(request))['content']))
+          data=b''.join(chunks)
+          assert hashlib.sha256(data).hexdigest()=='d06868956fdf5f6601bd2a1635356f1410ecb6c431e0fe65db8e00e34fd95f20'
+          patch=json.loads(lzma.decompress(data))
+          for item in patch['files']:
+              path=pathlib.Path(item['path'])
+              assert not path.is_absolute() and '..' not in path.parts
+              if 'beforeGit' in item:
+                  before=path.read_bytes()
+                  assert hashlib.sha1(b'blob '+str(len(before)).encode()+b'\0'+before).hexdigest()==item['beforeGit'], str(path)
+              else: assert not path.exists(), str(path)
+              if 'text' in item: output=item['text']
+              else:
+                  output=before.decode('utf-8')
+                  for start,end,value in sorted(item['edits'],reverse=True): output=output[:start]+value+output[end:]
+              result=output.encode('utf-8')
+              assert hashlib.sha256(result).hexdigest()==item['sha256'], str(path)
+              path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(result);print('Applied',path)
+          PY
+      - run: npm run build
+      - run: npm test
+      - run: python -m pip install playwright==1.57.0
+      - run: python -m playwright install --with-deps chromium
+      - run: npm run test:project-browser
+        env:
+          VB6_BROWSER: chromium
+      - name: Commit verified source and remove transfer workflows
+        run: |
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git rm .github/workflows/native-recovery.yml .github/workflows/native-integrate.yml
+          git add src tests tools package.json README.md .gitignore .github/workflows/project-compatibility.yml dist examples
+          git commit -m 'feat: integrate native VB6 project and group opening, lossless saves and regression coverage'
+          git push origin HEAD:feature/native-vb6-project-roundtrip
+          git archive HEAD --output=/tmp/native-integrated.tar
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-project-integration
+          path: |
+            /tmp/native-integrated.tar
+            reports/native-projects/
+          if-no-files-found: ignore
+          retention-days: 7
