@@ -1,0 +1,44 @@
+name: Native initialization diagnostic
+on:
+  push:
+    branches: [feat/freestanding-win32-and-desktop-windows]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tools/win32-fixtures.mjs
+      - name: Read only this test child's native global state
+        shell: pwsh
+        run: |
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class AotStateDiagnostic {
+            [DllImport("kernel32.dll",SetLastError=true)] public static extern bool ReadProcessMemory(IntPtr h, IntPtr address, byte[] data, UIntPtr size, out UIntPtr read);
+          }
+          '@
+          $file='tools/test-win32-aot.ps1'
+          $text=Get-Content -Raw $file
+          $anchor=" Check 'actual native EDIT class' ([AotWindowsTest]::Class(`$text) -eq 'Edit')"
+          $diagnostic=@'
+           $entry=(Get-Content -Raw (Join-Path $Directory 'build-evidence.json')|ConvertFrom-Json)|Where-Object {$_.file -like '*AotWindows.exe'}
+           $section=$entry.sections|Where-Object {$_.name -eq '.data'}
+           $base=$gui.MainModule.BaseAddress.ToInt64()
+           $bytes=[byte[]]::new(112);$read=[UIntPtr]::Zero
+           $ok=[AotStateDiagnostic]::ReadProcessMemory($gui.Handle,[IntPtr]($base+$section.rva),$bytes,[UIntPtr]112,[ref]$read)
+           Write-Host ('INITIAL STATE read='+$ok+' base='+$base+' data='+$section.rva)
+           for($i=0;$i -lt 112;$i+=4){Write-Host ('STATE '+$i+' = '+[BitConverter]::ToInt32($bytes,$i))}
+           Write-Host ('CAPTION '+[AotWindowsTest]::Text($window))
+          '@
+          if(-not $text.Contains($anchor)){throw 'Diagnostic anchor mismatch'}
+          $text=$text.Replace($anchor,$anchor+"`n"+$diagnostic)
+          $text=$text.Replace('throw "Timed out: $Name"','foreach($p in $processes){Write-Host ("PROCESS "+$p.Id+" exited="+$p.HasExited+" exit="+$p.ExitCode);foreach($w in [AotWindowsTest]::Windows($p.Id)){Write-Host ("WINDOW "+[AotWindowsTest]::Class($w)+" "+[AotWindowsTest]::Text($w));foreach($c in [AotWindowsTest]::Children($w)){Write-Host ("CHILD "+[AotWindowsTest]::Class($c)+" "+[AotWindowsTest]::Text($c))}}};throw "Timed out: $Name"')
+          Set-Content -Encoding utf8 $file $text
+          ./tools/test-win32-aot.ps1
