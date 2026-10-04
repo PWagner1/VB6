@@ -25,15 +25,15 @@ jobs:
           assert hashlib.sha256(patch).hexdigest()=='8b7aeb3a2218a82d8aa23f8ee4f3b154cbc80c4298a2f583794eeb671a4d7346'
           pathlib.Path('/tmp/native-source.patch').write_bytes(patch)
           PY
-          git apply --check /tmp/native-source.patch
-          git apply /tmp/native-source.patch
+          git apply --exclude='.github/workflows/*' --check /tmp/native-source.patch
+          git apply --exclude='.github/workflows/*' /tmp/native-source.patch
       - run: npm run build
       - run: npm test > /tmp/native-tests.log
       - name: Commit only validated source and generated distributions
         run: |
           test "$(git ls-remote origin refs/heads/feat/freestanding-win32-and-desktop-windows | cut -f1)" = "$GITHUB_SHA"
-          git rm .github/transfer/aot-1.b64 .github/transfer/aot-2.b64 .github/transfer/aot-3.b64 .github/transfer/aot-4.b64 .github/workflows/bootstrap-aot.yml
-          git add src desktop tools tests package.json .github/workflows/win32-aot.yml dist examples
+          git rm .github/transfer/aot-1.b64 .github/transfer/aot-2.b64 .github/transfer/aot-3.b64 .github/transfer/aot-4.b64
+          git add src desktop tools tests package.json dist examples
           git diff --cached --check
           git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat: emit freestanding Win32 PE32 in JavaScript; native MDI and desktop IDE windows'
           git push origin HEAD:refs/heads/feat/freestanding-win32-and-desktop-windows
