@@ -1,0 +1,39 @@
+name: Project compatibility
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: project-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build browser and standalone application
+        run: npm run build
+      - name: Run regression tests
+        run: npm test
+      - name: Retain reproducible source and build
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: project-compatibility-${{ github.sha }}
+          retention-days: 7
+          path: |
+            src/
+            tools/
+            tests/
+            examples/
+            packages/
+            dist/
+            package.json
+            README.md
+            docs/
