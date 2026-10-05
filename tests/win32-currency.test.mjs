@@ -74,3 +74,16 @@ test('Currency suffix and DefCur storage retain the Currency ABI',()=>{
 test('native type queries reject untyped numeric literals instead of inventing VB subtype metadata',()=>{
   for(const expression of ['VarType(1)','TypeName(1.5)'])assert.throws(()=>compile('Dim result As String\nresult = CStr('+expression+')'),/explicitly typed/);
 });
+
+// Native Windows is the behavioral oracle; these regressions keep the fixture
+// aligned with the documented VB conversion contract, not an IEEE comparison.
+test('mixed Currency comparisons retain rounding, direction and real API-oracle assertions',()=>{
+  const {project,checks}=currencyFixture(),source=project.modules[0].code;
+  assert.match(source,/1\.25@ = 1\.24999 And 1\.24999 = 1\.25@/);
+  assert.match(source,/1\.25@ > 1\.2498 And 1\.2498 < 1\.25@/);
+  assert.match(source,/1\.25@ < 1\.2502 And 1\.2502 > 1\.25@/);
+  assert.match(source,/Alias "VarCyCmpR8"/);
+  assert.ok(checks.some(label=>label.includes('complete signed Currency range')));
+  const result=compileWin32(project);
+  assert.ok(result.bytes.length>0);
+});

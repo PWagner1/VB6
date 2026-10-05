@@ -46,8 +46,18 @@ Dim text As String`);
   check('Round(Limit, 28) = Limit','Round beyond four places preserves exact storage');
   check('CDbl(1.25@) = 1.25 And CSng(1.25@) = 1.25','explicit floating conversions');
   add('d = 1.25@ / 2@');check('d = 0.625','Currency division produces a fractional Double');
-  check('1.25@ > 1.24999 And 1.24999 < 1.25@','mixed comparison preserves sub-Currency precision and order');
-  check('1.25@ <> 1.25001 And 1.25001 <> 1.25@','mixed equality does not round the Double operand');
+  // The documented VB comparison rule converts Single/Double to Currency first.
+  // Keep rounding equality distinct from ordinary ordered comparisons.
+  check('1.25@ = 1.24999 And 1.24999 = 1.25@','mixed comparison rounds floating operands to Currency in either order');
+  check('Not (1.25@ <> 1.25001) And Not (1.25001 <> 1.25@)','mixed inequality respects Currency rounding');
+  check('1.25@ > 1.2498 And 1.2498 < 1.25@','mixed strictly ordered values preserve operand order');
+  check('1.25@ < 1.2502 And 1.2502 > 1.25@','mixed strictly ordered values preserve reverse operand order');
+  check('1.25@ <= 1.24999 And 1.24999 >= 1.25@','mixed inclusive comparisons retain rounded equality');
+  check('1.25@ >= 1.25001 And 1.25001 <= 1.25@','reverse mixed inclusive comparisons retain rounded equality');
+  check('1.0001@ = CSng(1.0001) And CSng(1.0001) = 1.0001@','Single comparison converts to Currency');
+  check('-922337203685477.5808@ < 922337203685477.5807@ And 922337203685477.5807@ > -922337203685477.5808@','comparison across complete signed Currency range');
+  check('CyCompare(1.25@, 1.24999) = 1 And CyCompare(1.25@, 1.25001) = 1','native OleAut32 oracle confirms rounded mixed equality');
+  check('CyCompare(1.25@, 1.2498) = 2 And CyCompare(1.25@, 1.2502) = 0','native OleAut32 oracle confirms mixed comparison direction');
   check('VarType(amount) = 6 And TypeName(amount) = "Currency"','Currency VarType and TypeName');
   check('VarType(1@ + CDbl(0.5)) = 6 And VarType(1@ - CDbl(0.5)) = 6','addition/subtraction Currency promotion');
   check('VarType(1@ * CDbl(0.5)) = 5 And VarType(1@ / 2@) = 5','multiply Double and divide result promotion');
@@ -105,6 +115,7 @@ Dim text As String`);
 Private Declare Sub ExitProcess Lib "kernel32" (ByVal code As Long)
 Private Declare Sub ReadCurrency Lib "kernel32" Alias "RtlMoveMemory" (ByRef words As Long, ByRef money As Currency, ByVal count As Long)
 Private Declare Function CyAdd Lib "oleaut32" Alias "VarCyAdd" (ByVal a As Currency, ByVal b As Currency, ByRef result As Currency) As Long
+Private Declare Function CyCompare Lib "oleaut32" Alias "VarCyCmpR8" (ByVal a As Currency, ByVal b As Double) As Long
 Private Declare Function CyRound Lib "oleaut32" Alias "VarCyRound" (ByVal a As Currency, ByVal places As Long, ByRef result As Currency) As Long
 Private Const Limit As Currency = 900719925474.0993@
 Private values() As Currency

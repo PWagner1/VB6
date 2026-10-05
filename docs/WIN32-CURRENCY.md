@@ -35,7 +35,12 @@ Addition/subtraction involving Currency and another supported numeric type use
 Currency operands/results. Multiplication with Double produces Double;
 multiplication with Single or integral types retains Currency. Division and power
 use the documented floating result path. Comparing Currency with Single/Double
-uses `VarCyCmpR8`, so the floating operand is not first rounded to four decimals.
+uses `VarCyCmpR8`: the floating operand is converted to Currency before comparison,
+matching VB's documented comparison rule. Values such as `1.24999` and `1.25001`
+therefore both compare equal to `1.25@`; the sub-four-decimal difference is lost.
+Ordinary ordering is retained when the converted Currency values differ, and
+reversing operands reverses that ordering. This is distinct from promoting the
+Currency operand to Double.
 Explicit `CCur` is required for mixed text/Currency arithmetic and comparisons.
 These are typed-compiler rules, not a general mixed-Variant implementation.
 
@@ -119,7 +124,18 @@ are not established by the Currency test harness.
 
 - Currency: https://learn.microsoft.com/en-us/office/vba/language/reference/user-interface-help/currency-data-type
 - Arithmetic APIs: https://learn.microsoft.com/en-us/previous-versions/windows/desktop/automat/currency-arithmetic-functions
-- Comparison without premature rounding: https://learn.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-varcycmpr8
+- Currency/Single/Double comparison rules: https://learn.microsoft.com/en-us/office/vba/language/reference/user-interface-help/comparison-operators
+- Native comparison API: https://learn.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-varcycmpr8
 - String conversion: https://learn.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-varcyfromstr
 - Rounding: https://learn.microsoft.com/en-us/windows/win32/api/oleauto/nf-oleauto-varcyround
 - x86 return/argument ABI: https://learn.microsoft.com/en-us/cpp/cpp/argument-passing-and-naming-conventions
+
+### Comparison test correction
+
+The initial native Windows run reached assertion 30, where the test incorrectly
+expected a sub-four-decimal difference to remain after mixed comparison. That
+expectation contradicted Microsoft's documented conversion rule. The test now
+checks rounded equality, strict and inclusive ordering in both operand orders,
+Single conversion and the complete signed range, plus direct OleAut32 comparison
+calls from the emitted x86 program. The compiler's existing `VarCyCmpR8` lowering
+was retained; no floating-comparison assertion was disabled.
