@@ -1,0 +1,25 @@
+name: Integration snapshot
+on:
+  push:
+    branches: [feat/freestanding-win32-and-desktop-windows]
+    paths: [.github/workflows/integration-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Capture open work
+        run: |
+          git fetch origin refs/heads/main:refs/heads/snapshot-main
+          git fetch origin refs/pull/1/head:refs/heads/snapshot-pr1
+          git fetch origin refs/pull/8/head:refs/heads/snapshot-pr8
+          git bundle create /tmp/vb6-integration.bundle --all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vb6-integration-history
+          path: /tmp/vb6-integration.bundle
+          retention-days: 3
