@@ -1504,9 +1504,10 @@ async function automationInvoke(o,name,mode,args=[]){
   if(s.closed||s.session.closed)throw new VBError('Automation session closed during invocation',91);
   return result.value;
 }
-function automationMember(o,name){
+function automationMember(o,name,readProperty=false){
   const {m}=member(o,name),mode=m.modes.includes(2)?2:m.modes.includes(1)?1:0;
   if(!mode)throw new VBError('Automation property is write-only',394);
+  if(readProperty&&mode===2&&!m.params.length)return automationInvoke(o,m.name,mode,[]);
   const fn=(...args)=>automationInvoke(o,m.name,mode,args);fn.vbRawArgs=true;fn.vbPreserveMissing=true;fn.vbParams=m.params;
   return {__native:fn,__signature:{params:m.params},receiver:o};
 }
@@ -6591,7 +6592,7 @@ class VirtualMachine extends Signal {
     return {__procedure:object.target.module.procedures.get(member.procedure),__signature:member.signature,instance:object.target};
   }
   async getMember(object,name,frame){
-    if(isAutomationObject(object))return automationMember(object,name);
+    if(isAutomationObject(object))return automationMember(object,name,true);
     if(object?.__vbEnum){const key=lower(name);if(!Object.hasOwn(object.values,key))throw new VBError('Enum member not found: '+name,438);return object.values[key];}
     if(object?.__vbInterface){const members=object.target.module.interfaceBindings[object.interfaceName].members,key=lower(name);const value=this.interfaceProcedure(object,name,members[key]?null:'get');return value.__signature.kind==='property'&&!value.__signature.params.length?this.callProcedure(value.instance,value.__procedure,[],frame):value;}
     this.assertVisible(object,name,frame);

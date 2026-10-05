@@ -175,7 +175,7 @@ export class VirtualMachine extends Signal {
     return {__procedure:object.target.module.procedures.get(member.procedure),__signature:member.signature,instance:object.target};
   }
   async getMember(object,name,frame){
-    if(isAutomationObject(object))return automationMember(object,name);
+    if(isAutomationObject(object))return automationMember(object,name,true);
     if(object?.__vbEnum){const key=lower(name);if(!Object.hasOwn(object.values,key))throw new VBError('Enum member not found: '+name,438);return object.values[key];}
     if(object?.__vbInterface){const members=object.target.module.interfaceBindings[object.interfaceName].members,key=lower(name);const value=this.interfaceProcedure(object,name,members[key]?null:'get');return value.__signature.kind==='property'&&!value.__signature.params.length?this.callProcedure(value.instance,value.__procedure,[],frame):value;}
     this.assertVisible(object,name,frame);

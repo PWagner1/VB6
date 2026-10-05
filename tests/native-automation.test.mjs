@@ -31,3 +31,15 @@ test('native control allowlist must be a subset of explicit ProgID allowlist',()
 
 test('closed sessions do not copy late native ByRef results back into cells',async()=>{const a=adapter();let finish;a.invoke=()=>new Promise(r=>finish=r);const s=new AutomationRegistry().createSession(),o=s.adopt(a);let value=7;const call=automationInvoke(o,'Bump',1,[{ref:{get:()=>value,set:v=>value=v}}]);await new Promise(r=>setTimeout(r,0));await s.close();finish({value:undefined,args:[9]});await assert.rejects(()=>call,e=>e.number===91);assert.equal(value,7);});
 test('For Each uses bounded native enumeration rather than host prototype methods',async()=>{const a=adapter();a.enumerate=async()=>['first','second'];assert.deepEqual((await execute('Dim k As Variant\nFor Each k In d\nDebug.Print k\nNext k',a)).output,['first','second']);});
+
+async function executeChain(body){
+  let reads=0;const registry=new AutomationRegistry().register('Test.Tree',session=>{
+    let text='Unicode Żółć';const child=session.adopt({metadata:{members:[prop('Text',[],[2,4])]},release(){},invoke(name,mode,args){if(mode===4)text=args[0];return Promise.resolve({value:mode===2?text:undefined,args});}});
+    return {metadata:{members:[prop('Child',[],[2]),prop('Fetch',[],[1])]},release(){},invoke(name,mode,args){if(name==='Child')reads++;return Promise.resolve({value:child,args});}};
+  });
+  const program=compileProject({name:'Chains',startup:'Sub Main',modules:[{name:'M',kind:'module',code:'Option Explicit\nSub Main()\nDim d As Object, child As Object\nSet d = CreateObject("Test.Tree")\n'+body+'\nEnd Sub'}]});assert.deepEqual(program.diagnostics,[]);
+  const output=[],vm=new VirtualMachine(program,{automation:registry,print:s=>output.push(s)});try{await vm.start();return {output,reads};}finally{vm.stop();await vm.automationClose;}
+}
+test('Automation object-valued property chains resolve the intermediate getter exactly once',async()=>assert.deepEqual(await executeChain('Debug.Print d.Child.Text'),{output:['Unicode Żółć'],reads:1}));
+test('Automation property chains support nested puts and With receivers',async()=>assert.deepEqual(await executeChain('d.Child.Text = "changed"\nWith d.Child\nDebug.Print .Text\nEnd With'),{output:['changed'],reads:2}));
+test('Automation object assignment and explicit method chains preserve object identity',async()=>assert.deepEqual(await executeChain('Set child = d.Child\nDebug.Print child Is d.Child\nDebug.Print d.Fetch().Text'),{output:['-1','Unicode Żółć'],reads:2}));

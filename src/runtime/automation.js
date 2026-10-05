@@ -19,9 +19,10 @@ export async function automationInvoke(o,name,mode,args=[]){
   if(s.closed||s.session.closed)throw new VBError('Automation session closed during invocation',91);
   return result.value;
 }
-export function automationMember(o,name){
+export function automationMember(o,name,readProperty=false){
   const {m}=member(o,name),mode=m.modes.includes(2)?2:m.modes.includes(1)?1:0;
   if(!mode)throw new VBError('Automation property is write-only',394);
+  if(readProperty&&mode===2&&!m.params.length)return automationInvoke(o,m.name,mode,[]);
   const fn=(...args)=>automationInvoke(o,m.name,mode,args);fn.vbRawArgs=true;fn.vbPreserveMissing=true;fn.vbParams=m.params;
   return {__native:fn,__signature:{params:m.params},receiver:o};
 }
