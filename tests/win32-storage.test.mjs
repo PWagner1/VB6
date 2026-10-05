@@ -12,7 +12,7 @@ const compiler={fail(message){throw new Error(message);}};
 for(const [type,bytes]of [['Byte',1],['Integer',2],['Boolean',2],['Long',4],['String',4]]){
   test('native '+type+' array has explicit bounds, element width and first-dimension-contiguous strides',()=>{
     const d=storageLayout(compiler,declaration(type,[[literal(-2),literal(2)],[literal(3),literal(5)]]),{optionBase:0});
-    assert.equal(d.nativeCount,15);assert.equal(d.nativeElementBytes,bytes);assert.equal(d.nativeBytes,Math.ceil(15*bytes/4)*4);
+    assert.equal(d.nativeCount,15);assert.equal(d.nativeElementBytes,bytes);assert.equal(d.nativeBytes,4);assert.equal(d.nativeDataBytes,15*bytes);assert.equal(d.nativeArray,true);
     assert.deepEqual(d.nativeBounds,[{lower:-2,upper:2,stride:bytes},{lower:3,upper:5,stride:5*bytes}]);
   });
 }
@@ -20,7 +20,7 @@ test('native Option Base applies to omitted lower bounds only',()=>{
   const d=storageLayout(compiler,declaration('Long',[[null,literal(3)],[literal(0),literal(2)]]),{optionBase:1});
   assert.deepEqual(d.nativeBounds,[{lower:1,upper:3,stride:4},{lower:0,upper:2,stride:12}]);assert.equal(d.nativeCount,9);
 });
-for(const [name,bounds]of [['reversed',[[literal(5),literal(4)]]],['too large',[[literal(0),literal(1048576)]]],['fractional',[[literal(0.5),literal(3)]]],['overflow',[[literal(0),literal(2147483648)]]],['dynamic',[]]]){
+for(const [name,bounds]of [['reversed',[[literal(5),literal(4)]]],['too large',[[literal(0),literal(1048576)]]],['fractional',[[literal(0.5),literal(3)]]],['overflow',[[literal(0),literal(2147483648)]]]]){
   test('native storage rejects '+name+' arrays',()=>assert.throws(()=>storageLayout(compiler,declaration('Long',bounds),{optionBase:0})));
 }
 for(const [name,code]of [
