@@ -11463,7 +11463,22 @@ class SourceEditor extends Signal {
     this.root=el('div',{class:'source-editor'});this.objects=el('select',{'aria-label':'Object'});this.procedures=el('select',{'aria-label':'Procedure'});this.selectors=el('div',{class:'code-selectors'},this.objects,this.procedures);this.findBar=this.buildFind();this.area=el('div',{class:'code-split-area'});this.root.append(this.selectors,this.findBar,this.area);container.append(this.root);
     this.primary=this.createPane();this.activePane=this.primary;this.area.append(this.primary.node);
     this.splitGrip=el('div',{class:'code-split-grip',role:'separator',tabindex:0,'aria-label':'Split code window','aria-orientation':'horizontal',title:'Split code window'});this.area.append(this.splitGrip);this.bindSplitter(this.splitGrip,true);this.splitGrip.addEventListener('dblclick',()=>this.toggleSplit());this.splitGrip.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();this.toggleSplit();}});
-    this.procedures.addEventListener('change',()=>{if(this.procedures.value.startsWith('event:')){this.emit('event',{object:this.objects.value,event:this.procedures.value.slice(6)});return;}if(!this.procedures.value&&this.activePane.mode==='procedure'){this.activePane.explicitDeclarations=true;this.syncPane(this.activePane,0);this.input.focus();this.cursorChanged();}else this.goToLine(Number(this.procedures.value)||1);});this.objects.addEventListener('change',()=>{this.selectedObject=this.objects.value;this.updateSelectors(false,true);});
+    this.procedures.addEventListener('change',()=>this.activateProcedure());this.procedures.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();this.activateProcedure();}});this.objects.addEventListener('change',()=>{this.selectedObject=this.objects.value;this.updateSelectors(false,true);});
+  }
+  activateProcedure(){
+    if(this.procedures.selectedIndex<0){
+      // A Timer has one event: Enter must work without a prior selection change.
+      if(this.objects.value==='(General)'||this.procedures.options.length!==1)return;
+      this.procedures.selectedIndex=0;
+    }
+    const value=this.procedures.value;
+    if(value.startsWith('event:')){
+      if(!this.readOnly)this.emit('event',{object:this.objects.value,event:value.slice(6)});
+      return;
+    }
+    if(!value&&this.activePane.mode==='procedure'){
+      this.activePane.explicitDeclarations=true;this.syncPane(this.activePane,0);this.input.focus();this.cursorChanged();
+    }else this.goToLine(Number(value)||1);
   }
   get input(){return this.activePane.input;} get viewport(){return this.activePane.viewport;} get syntax(){return this.activePane.syntax;} get gutter(){return this.activePane.gutter;}
   createPane(){
@@ -11511,8 +11526,11 @@ class SourceEditor extends Signal {
     if(selected!=='(General)'){
       const control=this.module.form?.controls.find(c=>c.name===selected),type=control?.type||'Form';
       const events=type==='Form'?['Initialize','Load','Activate','Deactivate','Resize','QueryUnload','Unload',...CONTROL_EVENTS]:[DEFAULT_EVENTS[type]||'Click',...(type==='Timer'?[]:CONTROL_EVENTS)];
-      const options=[...new Set(events)].sort().map(event=>{const existing=this.procedureIndex.find(p=>lower(p.name)===lower(selected+'_'+event));return el('option',{value:existing?existing.line:'event:'+event},event+(existing?'':' '));});
-      this.procedures.replaceChildren(...options);return;
+      const previousEvent=this.eventObject===selected?this.procedures.selectedOptions[0]?.dataset.event:null;
+      const options=[...new Set(events)].sort().map(event=>{const existing=this.procedureIndex.find(p=>lower(p.name)===lower(selected+'_'+event));return el('option',{value:existing?existing.line:'event:'+event,'data-event':event},event+(existing?'':' '));});
+      this.procedures.replaceChildren(...options);this.eventObject=selected;
+      // Native selects otherwise preselect their only item and never emit change.
+      this.procedures.selectedIndex=previousEvent?options.findIndex(option=>option.dataset.event===previousEvent):-1;return;
     }
     if(!force&&!includeObjects&&!this.selectorDirty)return;
     this.selectorDirty=false;const previous=this.procedures.value;this.procedures.replaceChildren(el('option',{value:''},'(Declarations)'),...[...this.procedureIndex].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>el('option',{value:p.line},p.name+(p.kind==='Sub'?'':` [${p.kind}]`))));this.procedures.value=previous;
@@ -12227,6 +12245,7 @@ class IdeDocuments {
       const id=event.module.id,now=performance.now(),patch={start:change.start,before:event.oldText.slice(change.start,change.oldEnd),after:event.newText.slice(change.start,change.newEnd),beforeMarks,afterMarks:event.module.bookmarks};
       ide.history.recordPatch(id,patch,(project,patches,undo)=>{const target=findModule(project,id);if(!target)throw new Error('Undo module is missing.');for(const p of undo?[...patches].reverse():patches){const old=undo?p.after:p.before,next=undo?p.before:p.after;if(target.code.slice(p.start,p.start+old.length)!==old)throw new Error('The source changed outside the undo history.');target.code=target.code.slice(0,p.start)+next+target.code.slice(p.start+old.length);target.bookmarks=[...(undo?p.beforeMarks:p.afterMarks)];}return project;},'Edit '+event.module.name,event.kind==='typing'&&ide.lastTypingModule===id&&now-(ide.lastTyped||0)<700);
       ide.lastTyped=event.kind==='typing'?now:0;ide.lastTypingModule=event.kind==='typing'?id:null;ide.markDirty(true);});
+    value.on('event',({object,event})=>{if(ide.runState!=='design'||value.readOnly)return;ide.openDocument(module.id,'code');ide.ensureEvent(object,event);});
     value.on('cursor',c=>{if(ide.activeModule?.id===module.id)ide.statusCursor.textContent='Ln '+c.line+', Col '+c.column;});value.on('breakpoint',bp=>ide.toggleBreakpoint(bp.module,bp.line));value.on('bookmark',bp=>ide.toggleBookmark(module.id,bp.line));value.on('object',name=>{if(name!=='(General)')ide.eventDialog(name);});return value;
   }
   ensure(doc){const ide=this.ide,module=findModule(ide.project,doc.id);if(!module)return null;let win=this.mdi.windows.get(doc.key);const editor=this.editor(module);const appearanceKey=JSON.stringify(ide.appearance);if(editor.appearanceKey!==appearanceKey){editor.setAppearance?.(ide.appearance);editor.appearanceKey=appearanceKey;}editor.showLineNumbers=!!ide.project.settings.lineNumbers;
