@@ -13,13 +13,27 @@ jobs:
         with:
           fetch-depth: 0
       - name: Capture open work
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git fetch origin refs/heads/main:refs/heads/snapshot-main
           git fetch origin refs/pull/1/head:refs/heads/snapshot-pr1
           git fetch origin refs/pull/8/head:refs/heads/snapshot-pr8
           git bundle create /tmp/vb6-integration.bundle --all
+          python - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, urllib.request
+          chunks=[]
+          for sha in ['f3fec04c20062020fad596e3665190fd2cae8d9d','3faf33420bed7ac6bcc88901227a9468ad1f07ee','c163155bbdf1fdf4f3a0d1a6397771a55be2e5b2']:
+              request=urllib.request.Request('https://api.github.com/repos/wieslawsoltes/VB6/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+              chunks.append(base64.b64decode(json.load(urllib.request.urlopen(request))['content']))
+          data=b''.join(chunks)
+          assert hashlib.sha256(data).hexdigest()=='d06868956fdf5f6601bd2a1635356f1410ecb6c431e0fe65db8e00e34fd95f20'
+          pathlib.Path('/tmp/native-project-delta.json').write_bytes(lzma.decompress(data))
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: vb6-integration-history
-          path: /tmp/vb6-integration.bundle
+          path: |
+            /tmp/vb6-integration.bundle
+            /tmp/native-project-delta.json
           retention-days: 3
