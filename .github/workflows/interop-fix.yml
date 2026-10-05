@@ -1,7 +1,7 @@
 name: Finalize native recovery protection
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches: [feat/native-workspace-interop]
 permissions:
   contents: write
 concurrency:
@@ -9,42 +9,50 @@ concurrency:
   cancel-in-progress: false
 jobs:
   correction:
-    if: github.head_ref == 'feat/native-workspace-interop' && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.ref == 'refs/heads/feat/native-workspace-interop'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Preserve current baseline and apply verified recovery regression fix
+      - name: Capture current main and apply exact recovery regression correction
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/interop-final
           git fetch origin main
           git bundle create /tmp/interop-final/baseline.bundle HEAD refs/remotes/origin/main
           git rev-parse origin/main > /tmp/interop-final/main.txt
           python - <<'PY'
-          import hashlib,pathlib
-          patches=[('src/ide/native-workspace.js','311737182d7b0a29fba4cc755df9d78e711ddd76798e0a6f3b085ab058c433d9','915216e9d7e7dd86d1a3646d01e34543d79a87328f0ddc82059d33d27d1f5a93',"if(!action)return false;const result=await recoverNativeDirectory(handle,{action});","if(!action)return false;\n    if(ide.runState!=='design')throw new Error('Stop execution before recovering a native folder');\n    // Disk recovery invalidates the saved baseline even when memory did not change.\n    // Invalidate before writes so partial/failed recovery also preserves discard protection.\n    ide.savedJSON=null;ide.markDirty();\n    const result=await recoverNativeDirectory(handle,{action});"),('tools/native-project-browser-tests.py','4f43107aaaad97c0c49dc7f0e25b1473479a7a42d23dcc2f818f91ded4c32ea5','209615f8970f10b244b78af1003e60055838ba1f86c7298747c12211064f078b',"self.assertEqual(bytes(actual),FIXTURE['app/App.vbp']);self.assertTrue(self.js('vb6Studio.dirty'))","self.assertEqual(bytes(actual),FIXTURE['app/App.vbp']);self.assertTrue(self.js('vb6Studio.dirty'))\n        # A subsequent no-op dirty recalculation must not revalidate the old disk snapshot.\n        self.js('vb6Studio.markDirty()');self.assertTrue(self.js('vb6Studio.dirty'))")]
+          import base64,hashlib,json,os,pathlib,urllib.request
+          sha='3a3f0db2ee24eb06648bc22017df5386d78f060f'
+          req=urllib.request.Request('https://api.github.com/repos/wieslawsoltes/VB6/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+          data=base64.b64decode(json.load(urllib.request.urlopen(req))['content'])
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+          files=json.loads(data);assert {f['path'] for f in files}=={'src/ide/native-workspace.js','tools/native-project-browser-tests.py'}
+          digest=lambda b:hashlib.sha256(b).hexdigest()
           outputs=[]
-          for path,before,after,old,new in patches:
-              p=pathlib.Path(path);data=p.read_bytes();digest=hashlib.sha256(data).hexdigest()
-              if digest==after:continue
-              assert digest==before,path+' changed concurrently'
-              text=data.decode('utf-8');assert text.count(old)==1
-              data=text.replace(old,new).encode('utf-8');assert hashlib.sha256(data).hexdigest()==after
-              outputs.append((p,data))
-          for p,data in outputs:p.write_bytes(data)
+          for f in files:
+              p=pathlib.Path(f['path']);before=p.read_bytes()
+              if digest(before)==f['after']:continue
+              assert digest(before)==f['before'],str(p)+' changed concurrently'
+              text=before.decode('utf-8')
+              for old,new in f['replacements']:
+                  assert text.count(old)==1;text=text.replace(old,new)
+              output=text.encode('utf-8');assert digest(output)==f['after'];outputs.append((p,output))
+          for p,output in outputs:p.write_bytes(output)
           PY
       - name: Full regression and reproducible build
         run: |
           set -euo pipefail
           npm run build 2>&1 | tee /tmp/interop-final/build.log
           npm test 2>&1 | tee /tmp/interop-final/tests.log
-      - name: Commit the recovery fix without changing workflows
+      - name: Commit application changes without modifying workflows
         run: |
           set -euo pipefail
           git config user.name 'Wiesław Šoltés'
