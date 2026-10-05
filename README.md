@@ -97,7 +97,7 @@ Open **Tools → MCP Agent Access…** to expose this IDE to an external coding 
 The IDE is an **MCP server only**: it does not connect to external MCP servers,
 run their tools, perform OAuth sign-in, or launch configured stdio servers.
 
-Its **106 structured tools** cover projects and source interchange, code edits,
+Its **114 structured tools** cover projects and source interchange, code edits,
 compiler diagnostics, forms/controls/menus, resources and virtual files,
 editor/workspace management, Object Browser, debugger/live edits and sandboxed
 application interaction. The same server is bundled into the static app and
@@ -152,7 +152,3 @@ See [Direct Win32/AOT contract, examples and SDK](docs/WIN32-AOT.md), [all Windo
 ## Original Visual Basic project files
 
 Open `.vbp` projects and `.vbg` groups from complete selected files, folders or ZIPs, alongside existing browser snapshots. Save native source/companion files as a ZIP or to an explicitly selected directory, or keep a `.vb6web` snapshot with native metadata. Unchanged bytes, source encodings, hidden attributes, duplicate project settings and unknown companions are retained; unsafe or unsupported native edits fail rather than silently discard data. Project-group switching keeps peer edits and detects shared-file conflicts. See [Native project files](docs/NATIVE-PROJECTS.md) for usage, filesystem safeguards, encoding choices and the distinction between file preservation and native COM/runtime compatibility.
-
-### Calculator and floating-point Win32 export
-
-The direct compiler now lowers `Single`/`Double` storage and static indexed controls used by the unchanged Calculator example. See [Native numeric support](docs/WIN32-NUMERIC.md) for operations, ABI/error behavior, tests and remaining restrictions.
