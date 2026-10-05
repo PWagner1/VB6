@@ -1,4 +1,6 @@
-param([string]$Directory = 'validation/currency')
+param([string]$Directory = 'validation/currency', [string]$Program = 'AotCurrency',
+ [string]$Manifest = 'currency-build.json', [string]$ReportName = 'currency-execution.json',
+ [string]$Dependency = '')
 $ErrorActionPreference = 'Stop'
 # Test-only Windows interop. The generated PE contains no CLR or script host.
 Add-Type @'
@@ -17,18 +19,28 @@ public static class CurrencyWindowsProbe {
 }
 '@
 $report = [ordered]@{ ok=$false; platform=[Environment]::OSVersion.VersionString; hostArchitecture=$env:PROCESSOR_ARCHITECTURE; culture=[Globalization.CultureInfo]::CurrentCulture.Name; executableArchitecture='x86'; checks=@() }
+foreach ($name in @($Program,$Manifest,$ReportName,$Dependency)) {
+ if ($name -and $name -notmatch '^[A-Za-z0-9_.-]+$') { throw 'Invalid test artifact name' }
+}
 $path = (Resolve-Path $Directory).Path
-$plan = Get-Content (Join-Path $path 'currency-build.json') -Raw | ConvertFrom-Json
-$source = Join-Path $path 'AotCurrency.exe'
+$plan = Get-Content (Join-Path $path $Manifest) -Raw | ConvertFrom-Json
+$source = Join-Path $path ($Program+'.exe')
 $report.sha256 = (Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant()
 $clean = Join-Path ([IO.Path]::GetTempPath()) ('vb6-currency-'+[Guid]::NewGuid().ToString('N'))
 $process = [Diagnostics.Process]::new()
 try {
  if($report.sha256 -ne $plan.sha256){throw 'Generated executable digest does not match its build manifest'}
  [IO.Directory]::CreateDirectory($clean) | Out-Null
- $exe=Join-Path $clean 'AotCurrency.exe';Copy-Item $source $exe
+ $exe=Join-Path $clean ($Program+'.exe');Copy-Item $source $exe
  if(@(Get-ChildItem $clean).Count -ne 1){throw 'Isolated execution directory was not single-file'}
- $report.checks += 'Copied only the EXE into an empty directory'
+ $expectedFiles=1
+ if($Dependency){
+  $dll=Join-Path $path $Dependency
+  $report.dependency=@{name=$Dependency;sha256=(Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()}
+  Copy-Item $dll (Join-Path $clean $Dependency)
+  $expectedFiles=2
+  $report.checks += 'Copied only the EXE and explicitly supplied independent test DLL'
+ }else{$report.checks += 'Copied only the EXE into an empty directory'}
  $process.StartInfo.FileName=$exe;$process.StartInfo.WorkingDirectory=$clean;$process.StartInfo.UseShellExecute=$false
  $process.EnableRaisingEvents=$true
  if(-not $process.Start()){throw 'Could not start the Currency executable'}
@@ -42,9 +54,10 @@ try {
  }
  $report.embeddedAssertions=$plan.checks
  $report.checks += "$($plan.checks.Count) numbered native Currency assertions returned success"
- $report.checks += '2,000 recursive Currency and array lifetime cycles completed'
- if(@(Get-ChildItem $clean -Force).Count -ne 1){throw 'Execution extracted unexpected files beside the EXE'}
- $report.checks += 'No adjacent runtime, DLL or extracted application file required'
+ $report.checks += '2,000 numeric lifetime or ABI cycles completed'
+ if(@(Get-ChildItem $clean -Force).Count -ne $expectedFiles){throw 'Execution extracted unexpected files beside the EXE'}
+ if($Dependency){$report.checks += 'No extracted files or undeclared adjacent dependencies'}
+ else{$report.checks += 'No adjacent runtime, DLL or extracted application file required'}
  $report.ok=$true
 } catch {
  $report.error=$_.Exception.Message
@@ -52,7 +65,7 @@ try {
 } finally {
  try {if($process.Id -and -not $process.HasExited){$process.Kill();$process.WaitForExit(5000)|Out-Null}}catch{}
  $process.Dispose()
- $report | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $path 'currency-execution.json')
+ $report | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $path $ReportName)
  Remove-Item -Path $clean -Recurse -Force -ErrorAction SilentlyContinue
  $report | ConvertTo-Json -Depth 8 | Write-Host
 }
