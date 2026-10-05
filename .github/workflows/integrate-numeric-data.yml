@@ -1,0 +1,57 @@
+name: Integrate numeric export with data-source changes
+on:
+  push:
+    branches: [fix/win32-calculator-numeric-export]
+    paths: ['.github/workflows/integrate-numeric-data.yml']
+permissions:
+  contents: write
+jobs:
+  integrate:
+    if: github.ref == 'refs/heads/fix/win32-calculator-numeric-export'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Merge reviewed data-source commit and retain both source changes
+        shell: bash
+        run: |
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git merge --no-commit --no-ff 7d821e026b7c7cd34cfc07c452647260080e492e || test -f .git/MERGE_HEAD
+          python - <<'PY'
+          import subprocess
+          paths=subprocess.check_output(['git','diff','--name-only','--diff-filter=U'],text=True).splitlines()
+          for path in paths:
+              if not (path.startswith('dist/') or path=='src/exporter/runtime-payload.js'):
+                  raise SystemExit('Source conflict requires review: '+path)
+              subprocess.run(['git','checkout','--ours','--',path],check=True)
+              subprocess.run(['git','add','--',path],check=True)
+          PY
+      - run: npm run build && npm test
+      - name: Commit combined source and reproducible distributions
+        shell: bash
+        run: |
+          git add -u
+          git commit -m 'merge: preserve data-source integrations and guards alongside numeric Win32 compiler'
+          git push origin HEAD:fix/win32-calculator-numeric-export
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integrated-calculator-data-source
+          path: |
+            src/
+            tests/
+            tools/
+            docs/
+            desktop/
+            examples/
+            package.json
+            README.md
+            THIRD-PARTY-NOTICES.md
+            LICENSE
+          retention-days: 7
