@@ -13184,10 +13184,30 @@ class SourceEditor extends Signal {
     const next=String(value),change=hint||textChange(this.text,next),states=this.panes.map(p=>({pane:p,start:mapOffset(change,this.selectionBounds(p).start),end:mapOffset(change,this.selectionBounds(p).end)}));const indexed=updateSourceIndex(this.index,next,change);this.metrics.indexedLines+=indexed.scannedLines;this.selectorDirty ||= indexed.changedProcedures;this.text=next;this.lastValue=next;this.index=indexed.index;this.lines=this.index.lines;this.lineStarts=this.index.starts;this.procedureIndex=this.index.procedures;
     for(const state of states){if(selection&&state.pane===this.activePane)Object.assign(state,selection);this.syncPane(state.pane,state.start,state.end);}
   }
-  setDocument(module,project){this.closeCompletion();this.closeInfo();const changed=this.module?.id!==module.id;this.module=module;this.project=project;this.root.style.setProperty('--editor-tab-width',String(project.settings.tabWidth||4));if(changed&&!this.appearance.fullModule)this.primary.mode='procedure';this.selectedObject='(General)';this.assignSource(module.code||'',changed?{start:0,end:0}:null);if(changed)for(const pane of this.panes){pane.input.scrollTop=pane.input.scrollLeft=0;}this.updateSelectors();this.paint();this.cursorChanged();}
+  setDocument(module,project){this.closeCompletion();this.closeInfo();const changed=this.module?.id!==module.id;this.module=module;this.project=project;this.root.style.setProperty('--editor-tab-width',String(project.settings.tabWidth||4));if(changed&&!this.appearance.fullModule)this.primary.mode='procedure';if(changed){this.selectedObject='(General)';this.objectEntries=null;this.objectSignature=null;}this.assignSource(module.code||'',changed?{start:0,end:0}:null);if(changed)for(const pane of this.panes){pane.input.scrollTop=pane.input.scrollLeft=0;}this.updateSelectors();this.paint();this.cursorChanged();}
+  // Form-only edits do not replace source buffers, caret positions, or split-pane state.
+  refreshObjects(refreshEvents=true){
+    if(!this.module)return false;
+    const entries=[{id:'$general',name:'(General)',type:''}],names=new Set();
+    if(this.module.form){
+      entries.push({id:'$form',name:'Form',type:this.module.form.type});
+      for(const control of this.module.form.controls){
+        const name=lower(control.name);if(names.has(name))continue;names.add(name);
+        entries.push({id:control.id,name:control.name,type:control.type,index:control.properties.Index});
+      }
+    }
+    const signature=JSON.stringify(entries);if(signature===this.objectSignature){this.objects.value=this.selectedObject||'(General)';return false;}
+    const selected=this.selectedObject||'(General)',previous=this.objectEntries?.find(entry=>lower(entry.name)===lower(selected));
+    const current=entries.find(entry=>entry.id===previous?.id)||entries.find(entry=>lower(entry.name)===lower(selected));
+    this.selectedObject=current?.name||'(General)';this.objectEntries=entries;this.objectSignature=signature;
+    this.objects.replaceChildren(...entries.map(entry=>el('option',{value:entry.name},entry.name)));
+    this.objects.value=this.selectedObject;
+    if(refreshEvents)this.updateSelectors(false,true);
+    return true;
+  }
   updateSelectors(includeObjects=true,force=false){
     if(!this.module)return;
-    if(includeObjects){const value=this.selectedObject||'(General)';this.objects.replaceChildren(el('option',{value:'(General)'},'(General)'),...(this.module.form?[el('option',{value:'Form'},'Form'),...this.module.form.controls.map(c=>el('option',{value:c.name},c.name))]:[]));this.objects.value=value;}
+    if(includeObjects)this.refreshObjects(false);
     const selected=this.selectedObject||'(General)';
     if(selected!=='(General)'){
       const control=this.module.form?.controls.find(c=>c.name===selected),type=control?.type||'Form';
@@ -13896,7 +13916,7 @@ class IdeDocuments {
   constructor(ide){this.ide=ide;this.tools=new Map();this.designers=new Map();this.editors=new Map();this.fallbackDesigner=new FormDesigner(el('div'));this.fallbackEditor=new SourceEditor(el('div'));ide.designer=this.fallbackDesigner;ide.editor=this.fallbackEditor;this.mdi=new MdiHost(ide.documentArea,{onActivate:key=>{const doc=ide.docs.find(d=>d.key===key);if(doc)this.activate(doc);},onClose:key=>ide.closeDocument(key),onChange:()=>ide.autosave()});}
   designer(module){let value=this.designers.get(module.id);if(value)return value;const pane=el('div',{class:'designer-pane'});value=new FormDesigner(pane);value.pane=pane;this.designers.set(module.id,value);const ide=this.ide;
     value.on('selection',()=>{if(ide.activeModule?.id!==module.id)return;ide.inspector.render();const items=value.selected();ide.propertyCaption.querySelector('strong').textContent='Properties - '+(items.length===1?items[0].name:items.length>1?'Multiple Controls':ide.activeModule?.name||'');});
-    value.on('change',change=>{if(ide.runState!=='design')return;const before=clone(ide.project),target=findModule(before,module.id);if(!target)return;target.form=change.before;ide.record(before,change.label,false);ide.inspector.render();ide.updateLayoutMini();});
+    value.on('change',change=>{if(ide.runState!=='design')return;const before=clone(ide.project),target=findModule(before,module.id);if(!target)return;target.form=change.before;ide.record(before,change.label,false);this.editors.get(module.id)?.refreshObjects();ide.inspector.render();ide.updateLayoutMini();});
     value.on('tool',type=>{ide.toolboxGrid.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.controlType===type));ide.status(type==='Pointer'?'Ready':'Draw '+type+' on the form.');});
     value.on('backend',backend=>{if(ide.activeModule?.id===module.id)ide.statusBackend.textContent=backend;});value.on('position',p=>ide.statusPosition.textContent=p.x+', '+p.y);
     value.on('event',({control})=>ide.ensureEvent(control?.name||'Form',DEFAULT_EVENTS[control?.type||'Form']||'Click'));
@@ -13911,7 +13931,7 @@ class IdeDocuments {
     value.on('cursor',c=>{if(ide.activeModule?.id===module.id)ide.statusCursor.textContent='Ln '+c.line+', Col '+c.column;});value.on('breakpoint',bp=>ide.toggleBreakpoint(bp.module,bp.line));value.on('bookmark',bp=>ide.toggleBookmark(module.id,bp.line));value.on('object',name=>{if(name!=='(General)')ide.eventDialog(name);});return value;
   }
   ensure(doc){const ide=this.ide,module=findModule(ide.project,doc.id);if(!module)return null;let win=this.mdi.windows.get(doc.key);const editor=this.editor(module);const appearanceKey=JSON.stringify(ide.appearance);if(editor.appearanceKey!==appearanceKey){editor.setAppearance?.(ide.appearance);editor.appearanceKey=appearanceKey;}editor.showLineNumbers=!!ide.project.settings.lineNumbers;
-    if(editor.module!==module||editor.text!==module.code)editor.setDocument(module,ide.project);
+    if(editor.module!==module||editor.text!==module.code)editor.setDocument(module,ide.project);else editor.refreshObjects();
     editor.setBreakpoints(ide.breakpoints);editor.setDiagnostics(ide.diagnostics);editor.setReadOnly(ide.runState==='running');
     let designer;if(module.form){designer=this.designer(module);if(designer.module!==module||designer.modelRevision!==ide.visualRevision){designer.setDocument(module,ide.project);designer.modelRevision=ide.visualRevision;}designer.root.inert=ide.runState!=='design';}
     if(!win){const width=doc.view==='form'?Math.min(760,Math.max(380,(Number(module.form?.properties.ClientWidth)||4800)/15+50)):660,height=doc.view==='form'?Math.min(610,Math.max(300,(Number(module.form?.properties.ClientHeight)||3600)/15+90)):440;win=this.mdi.add(doc.key,this.title(doc),doc.view==='form'?designer.pane:editor.pane,{width,height,glyph:doc.view==='form'?'form':'code'});}else win.label.textContent=this.title(doc);return win;
