@@ -44,9 +44,14 @@ try {
  $p=Launch 'AotArithmetic'
  Check 'native arithmetic and Declare executable exits' ($p.WaitForExit(15000))
  Check ('native arithmetic, recursion, ByRef, strings, branch/loop, Declare result '+$p.ExitCode) ($p.ExitCode -eq 0)
- foreach($name in @('AotStorage','AotErrors')) {
+ foreach($name in @('AotStorage','AotErrors','AotDynamicArrays')) {
   $p=Launch $name
-  Check ($name+' self-checking native program exits') ($p.WaitForExit(20000))
+  $exited=$p.WaitForExit(20000)
+  if(-not $exited) {
+    $diagnostic=@([AotWindowsTest]::Windows($p.Id)|ForEach-Object { [AotWindowsTest]::Text($_); [AotWindowsTest]::Children($_)|ForEach-Object { [AotWindowsTest]::Text($_) } }) -join ' '
+    throw ($name+' did not exit; native windows: '+$diagnostic)
+  }
+  Check ($name+' self-checking native program exits') $exited
   Check ($name+' ownership, storage and control-flow assertions; actual '+$p.ExitCode) ($p.ExitCode -eq 0)
  }
  $gui=Launch 'AotWindows';$script:window=[IntPtr]::Zero

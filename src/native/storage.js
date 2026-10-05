@@ -34,7 +34,9 @@ export function storageLayout(compiler, decl, module, proc) {
   decl.nativeElementBytes = elementBytes;
   let count = 1;
   if (decl.bounds !== null && decl.bounds !== undefined) {
-    if (decl.parameter || !decl.bounds.length) compiler.fail('Dynamic arrays and whole-array parameters are not yet lowered by the native target', module);
+    decl.nativeArray = true;
+    decl.nativeDynamic = !decl.bounds.length;
+    if (decl.parameter && (!decl.byRef || decl.bounds.length)) compiler.fail('Native array parameters must be unsized and ByRef', module);
     if (decl.bounds.length > 8) compiler.fail('Native fixed arrays support at most eight dimensions', module);
     decl.nativeBounds = decl.bounds.map(([low, high]) => {
       const lower = boundValue(compiler, low, module, proc), upper = boundValue(compiler, high, module, proc);
@@ -45,8 +47,10 @@ export function storageLayout(compiler, decl, module, proc) {
       return {lower, upper, stride};
     });
   }
-  decl.nativeCount = count;
-  decl.nativeBytes = Math.ceil(count * elementBytes / 4) * 4;
+  decl.nativeCount = decl.nativeDynamic ? 0 : count;
+  decl.nativeDataBytes = decl.nativeDynamic ? 0 : count * elementBytes;
+  // Arrays own a SAFEARRAY pointer; backing storage is allocated by OleAut32.
+  decl.nativeBytes = decl.nativeArray ? 4 : Math.ceil(count * elementBytes / 4) * 4;
   return decl;
 }
 
@@ -75,7 +79,7 @@ export const nativeStorageMethods = {
     const ready = this.x.unique(); this.x.test().branch('ne', ready).value(this.string('')).label(ready);
   },
   storageExpression(variable, node) {
-    if (variable.nativeBounds && !variable.elementOf) this.fail('Whole-array assignment is not yet lowered by the native target');
+    if (variable.nativeArray && !variable.elementOf) this.fail('Whole-array values require array assignment or a ByRef array parameter');
     if (key(variable.type) === 'string') this.textExpression(node); else this.numeric(node);
   },
   rawStorageAddress(variable) {
@@ -84,43 +88,19 @@ export const nativeStorageMethods = {
     else if (variable.parameter && variable.byRef) this.x.value({argument: variable.offset});
     else this.x.local(variable.offset);
   },
-  elementAddress(variable) {
-    const x = this.x, array = variable.elementOf;
-    x.value(0).push();
-    for (let i = 0; i < variable.indices.length; i++) {
-      const {lower, upper, stride} = array.nativeBounds[i];
-      this.numeric(variable.indices[i]);
-      x.compare(lower).branch('l', 'error:9').compare(upper).branch('g', 'error:9');
-      x.emit(0x2d).imm(lower).emit(0x69, 0xc0).imm(stride).emit(0x59, 0x01, 0xc8).push();
-    }
-    this.rawStorageAddress(array); x.emit(0x59, 0x01, 0xc8);
-  },
   zeroStorage(variable) {
     this.rawStorageAddress(variable);
     this.x.emit(0x89, 0xc7, 0xb9).imm((variable.nativeBytes || 4) / 4).emit(0x31, 0xc0, 0xfc, 0xf3, 0xab);
   },
   clearStringStorage(variable) {
+    if (variable.nativeArray) return this.destroyArrayStorage(variable);
     this.x.push(variable.nativeCount || 1); this.rawStorageAddress(variable); this.x.push().call('native:string:clear');
   },
   initializeFixedString(variable) {
+    if (variable.nativeArray) return this.initializeArrayStorage(variable);
     if (key(variable.type) !== 'string' || !variable.fixedLength || (variable.parameter||variable.ownedParameter)) return;
     const x = this.x;
     x.push(variable.fixedLength).push(variable.nativeCount || 1); this.rawStorageAddress(variable); x.push().call('native:string:initialize-fixed');
-  },
-  arrayBoundCall(node, upper) {
-    if (node.args.length < 1 || node.args.length > 2) this.fail('LBound/UBound expects an array and optional dimension');
-    const array = this.variable(node.args[0]);
-    if (!array?.nativeBounds || array.elementOf) this.fail('LBound/UBound requires a native fixed array');
-    const label = this.x.unique('array-bounds'); this.ro.align(4).label(label);
-    for (const dim of array.nativeBounds) this.ro.u32(upper ? dim.upper : dim.lower);
-    this.numeric(node.args[1] || {kind:'literal', value:1});
-    this.x.compare(1).branch('l','error:9').compare(array.nativeBounds.length).branch('g','error:9').emit(0x8b,0x04,0x85).addr(label,-4);
-  },
-  eraseStorage(expr) {
-    const variable = this.variable(expr);
-    if (!variable?.nativeBounds || variable.elementOf) this.fail('Native Erase requires a fixed array');
-    if (key(variable.type) === 'string') this.clearStringStorage(variable); else this.zeroStorage(variable);
-    this.initializeFixedString(variable);
   },
   stringBuiltin(node, name) {
     const x = this.x, args = node.args;
@@ -128,7 +108,7 @@ export const nativeStorageMethods = {
       if (args.length !== 1 || this.type(args[0]) !== 'string') this.fail(name + ' expects one String argument');
       if(name==='strptr'){
         const variable=this.variable(args[0]);
-        if(variable){if(variable.nativeBounds&&!variable.elementOf)this.fail('StrPtr requires a String element, not an array');this.address(variable);x.emit(0x8b,0x00);}
+        if(variable){if(variable.nativeBounds&&!variable.elementOf)this.fail('StrPtr requires a String element, not an array');const pin=this.address(variable);x.emit(0x8b,0x00);this.releaseArrayPin(pin);}
         else if(args[0].kind==='id'&&key(args[0].name)==='vbnullstring')x.value(0);
         else this.expression(args[0]);
         return true;
