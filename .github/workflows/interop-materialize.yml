@@ -27,7 +27,7 @@ jobs:
           mkdir -p /tmp/native-integration
           git bundle create /tmp/native-integration/baseline.bundle HEAD refs/remotes/origin/main
           python - <<'PY'
-          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
+          import base64, hashlib, json, lzma, os, pathlib, re, subprocess, urllib.request
           root=pathlib.Path('/tmp/native-integration')
           chunks=[]
           for sha in ['5ed9b580f2a07eae6576f86cee6fb88fd7887e6f','a3107c214fad919a870b5534c817f4f166603284','da8aceff3539d35ce259303a949045b22cbe75f2','28d2a68105066a67c92c8e9ff12b68946baec6f6','e1c980248c7949299d89cd30c2dde848076457a7']:
@@ -40,6 +40,20 @@ jobs:
           assert delta['base']=='368fac5d9a9bad449fdcb5e49cc4cc1194ba88f0'
           allowed={'README.md','docs/NATIVE-PROJECTS.md','docs/NATIVE-WORKSPACE-INTEROP.md','package.json','src/controls/adapters.js','src/controls/controls.js','src/designer/designer.js','src/ide/documents.js','src/ide/main.js','src/ide/native-projects.js','src/ide/native-workspace.js','src/project/formats.js','src/project/native-directory.js','src/project/native-project.js','src/project/native-save-recovery.js','src/project/native-window-state.js','src/project/zip.js','src/runtime/automation-wire.js','src/runtime/automation.js','src/runtime/entry.js','src/runtime/host.js','src/runtime/vm.js','tests/helpers/native-memory-directory.mjs','tests/native-automation.test.mjs','tests/native-control-adapters.test.mjs','tests/native-save-recovery.test.mjs','tests/native-snapshot.test.mjs','tests/native-workspace.test.mjs','tests/native-zip-encoding.test.mjs','tools/interop/AutomationHost.cs','tools/interop/automation-host.ps1','tools/interop/native-automation.mjs','tools/interop/test-activex.mjs','tools/interop/test-native.mjs','tools/native-project-browser-tests.py','tools/native-snapshot.mjs','tools/verify-classic-roundtrip.mjs'}
           assert {f['path'] for f in delta['files']}==allowed
+          resolutions={'README.md':['fad23f8485ddd2e8d19406a345fe40887b807075dde3d7531eae1aab4d0f9adf','a6a4619a181d6148ade6eb8d70a4cd8df2961453c9882684c266c0dd6b46efe4'],'package.json':['5917d27a23610fc585c08137b23d05543685cc2736271c3458dfeb7179b3f95c','8666074f90b67b5630f98e50e69e79b07afe62eff5dea835c6b747bef85b370f'],'src/runtime/entry.js':['b531c3e5eafac22f4fc1383aeaab1022fb5cb230a1b7f2fbefdd82e287f10ed3','3e5fe8610cacbf6717b28e6c39dc40f86d88ed990a6b0949cee23e44c5deb16b'],'src/runtime/host.js':['9de999cf83dccc865f4d167ac46da0db9ba78eca2896bd69cb491bef205fcd0e','385352b4951f985f98030addee603347adf0b764860988d69f2d133da446ecf1'],'src/runtime/vm.js':['81eaa084fc22640987435e3856a1e9490fa258eab37fe73a3147fc3d6abb412c','7e4186cedd46c332ee6ae8e84bb18ff54e3f8360453d8cad129c2da1c820864e']}
+          def resolve(name,value):
+              before,after=resolutions[name]; assert digest(value)==before, name+' resolution input changed'
+              index=[0]
+              def block(match):
+                  index[0]+=1;a,b=match.group(1),match.group(2)
+                  if name=='README.md': return a+b
+                  if name=='package.json': return a.rstrip()+',\n'+b
+                  if name=='src/runtime/entry.js': return a+b if index[0]==1 else a.replace('RuntimeAPI={','RuntimeAPI={AutomationRegistry,ControlAdapterRegistry,')
+                  if name=='src/runtime/host.js': return a.replace('win32Options:this.options.win32,','win32Options:this.options.win32,automation:this.options.automation,controlRegistry:this.options.controlRegistry,')
+                  if name=='src/runtime/vm.js': return a+b if index[0]==1 else a.replace('this.dataClose=','this.automationClose=this.automation?.close();this.dataClose=')
+              out=re.sub(r'^<<<<<<< [^\n]*\n(.*?)^=======\n(.*?)^>>>>>>> [^\n]*\n',block,value.decode('utf-8'),flags=re.M|re.S).encode('utf-8')
+              assert digest(out)==after, name+' resolution output mismatch'
+              return out
           outputs=[]; conflicts=[]; report=[]
           for item in delta['files']:
               path=pathlib.Path(item['path'])
@@ -64,15 +78,15 @@ jobs:
                   for name,value in zip(names,[current,original,after]):pathlib.Path(name).write_bytes(value)
                   merged=subprocess.run(['git','merge-file','-p',*names],capture_output=True)
                   pathlib.Path(str(temp)+'.result').write_bytes(merged.stdout)
-                  if merged.returncode:
-                      conflicts.append(str(path)); continue
-                  output=merged.stdout
+                  if merged.returncode and str(path) in resolutions: output=resolve(str(path),merged.stdout)
+                  elif merged.returncode: conflicts.append(str(path)); continue
+                  else: output=merged.stdout
               outputs.append((path,output)); report.append({'path':str(path),'reviewed':digest(after),'integrated':digest(output),'mergedConcurrentEdit':current!=original})
           (root/'integration.json').write_text(json.dumps({'files':report,'conflicts':conflicts},indent=2))
           assert not conflicts, 'Manual three-way review required: '+', '.join(conflicts)
           for path,output in outputs:
               path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(output)
-          print('Applied',len(outputs),'reviewed files; concurrent edits preserved with conflict-checked three-way merges')
+          print('Applied',len(outputs),'reviewed files; concurrent edits preserved with checked resolutions')
           PY
       - name: Build and validate integrated application
         run: |
