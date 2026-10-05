@@ -65,7 +65,13 @@ jobs:
               else:
                   path.parent.mkdir(parents=True,exist_ok=True)
                   path.write_bytes(new)
-          print(f'Applied {len(outputs)} hash-verified source changes')
+          path=root/'src/native/compiler.js'
+          raw=path.read_bytes()
+          assert digest(raw)=='7317e791316dec3fe90caad23b83649794646a7eadda7bb035f0ea236e5af27e'
+          normalized=('\n'.join(line.rstrip() for line in raw.decode().splitlines()).rstrip()+'\n').encode()
+          assert digest(normalized)=='1c5718572c5350e397de8da832c5ed254728edae15b47af47f2c1c5aa2919b16'
+          path.write_bytes(normalized)
+          print(f'Applied {len(outputs)} hash-verified source changes and compiler whitespace correction')
           PY
       - name: Build and test integrated sources
         run: |
