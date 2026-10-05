@@ -1,0 +1,82 @@
+name: Finalize native Currency query types
+on:
+  push:
+    branches: [feat/win32-currency-export]
+    paths: [.github/workflows/currency-query-finalize.yml]
+permissions:
+  contents: write
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/win32-currency-export
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Correct query metadata without changing arithmetic representation
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          python3 - <<'PY'
+          from pathlib import Path
+          f=Path('src/native/currency.js');s=f.read_text()
+          anchor='  currencyBuiltin(node,name) {'
+          assert s.count(anchor)==1 and 'nativeQueryType(node)' not in s
+          s=s.replace(anchor,"""  nativeQueryType(node) {
+              while(node.kind==='group')node=node.expr;
+              if(node.kind==='literal'&&typeof node.value==='boolean')return 'boolean';
+              // Comparisons yield Boolean even though EAX carries their -1/0 value in a
+              // 32-bit register. Do not expose that physical register width as VarType.
+              if(node.kind==='binary'&&['=','<>','<','<=','>','>='].includes(key(node.op)))return 'boolean';
+              if(node.kind==='unary'&&key(node.op)==='not'&&this.nativeQueryType(node.expr)==='boolean')return 'boolean';
+              if(node.kind==='binary'&&['and','or','xor','eqv','imp'].includes(key(node.op))&&this.nativeQueryType(node.left)==='boolean'&&this.nativeQueryType(node.right)==='boolean')return 'boolean';
+              return this.type(node);
+            },
+          """+anchor)
+          old='const type=array?key(variable.type):this.type(args[0]);'
+          assert s.count(old)==1
+          s=s.replace(old,'const type=array?key(variable.type):this.nativeQueryType(query);');f.write_text(s)
+          f=Path('tools/win32-currency-fixtures.mjs');s=f.read_text()
+          anchor='  check(\'VarType(amount) = 6 And TypeName(amount) = "Currency"\',\'Currency VarType and TypeName\');'
+          assert s.count(anchor)==1
+          s=s.replace(anchor,anchor+"""
+            check('VarType(CBool(True)) = 11 And TypeName(CBool(False)) = "Boolean"','explicit Boolean query does not report register width');
+            check('VarType(1@ < 2@) = 11 And TypeName(CDbl(1) < CDbl(2)) = "Boolean"','comparison result queries report Boolean');
+            check('VarType(Not (1@ < 2@)) = 11 And VarType(CBool(True) And CBool(False)) = 11','Boolean expression queries preserve semantic type');""");f.write_text(s)
+          f=Path('tests/win32-currency.test.mjs');s=f.read_text()
+          assert 'native type queries classify Boolean literals' not in s
+          s+=r'''
+          test('native type queries classify Boolean literals and comparison results semantically',()=>{
+            const c={type:()=> 'long',nativeQueryType:nativeCurrencyMethods.nativeQueryType};
+            const bool={kind:'literal',value:true},comparison={kind:'binary',op:'<',left:{kind:'currency',value:'1'},right:{kind:'currency',value:'2'}};
+            for(const value of [bool,comparison,{kind:'group',expr:comparison},{kind:'unary',op:'not',expr:comparison},{kind:'binary',op:'and',left:bool,right:comparison}])assert.equal(c.nativeQueryType(value),'boolean');
+            assert.equal(c.nativeQueryType({kind:'binary',op:'and',left:bool,right:{kind:'literal',value:1}}),'long');
+          });
+          test('native Boolean type-query fixtures compile without weakening numeric-literal diagnostics',()=>{
+            compile('Dim tag As Long, name As String\ntag = VarType(CBool(True))\nname = TypeName(1@ < 2@)\ntag = VarType(Not (1@ < 2@))');
+            assert.throws(()=>compile('Dim tag As Long\ntag = VarType(1)'),/explicitly typed/);
+          });
+          ''';f.write_text(s)
+          f=Path('docs/WIN32-CURRENCY.md');s=f.read_text()
+          old='"Currency()"`. They evaluate non-array arguments once.'
+          assert s.count(old)==1
+          s=s.replace(old,'"Currency()"`. Typed Boolean values, comparison results and Boolean-only logical\nexpressions report Boolean (type 11), not the width of their machine register.\nThey evaluate non-array arguments once.').replace('Direct numeric literals without retained frontend subtype metadata are diagnosed;','Direct numeric literals and Boolean keywords lowered to numeric literals without\nretained frontend subtype metadata are diagnosed;');f.write_text(s)
+          PY
+      - run: npm run build
+      - run: npm test
+      - name: Publish source and reproducible bundles
+        run: |
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git add src/native/currency.js tools/win32-currency-fixtures.mjs tests/win32-currency.test.mjs docs/WIN32-CURRENCY.md dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
+          git diff --cached --check
+          git commit -m 'fix(native): report Boolean comparison query types independently of register width' -m 'VarType and TypeName must not expose EAX width as Long for Boolean comparison results. Preserve semantic Boolean results through Not and Boolean-only operators, retain diagnostics for discarded numeric/keyword literal subtype metadata, and add compile plus native execution assertions. Rebuild all combined bundles and run the complete Node suite.'
+          npm run build
+          git diff --exit-code
+          git push origin HEAD:refs/heads/feat/win32-currency-export
