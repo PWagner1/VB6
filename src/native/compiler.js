@@ -2,6 +2,7 @@ import {normalizeProject} from '../project/model.js';
 import {compileProject, parseParameters} from '../language/compiler.js';
 import {PE32Image, BinarySection} from './pe32.js';
 import {X86} from './x86.js';
+import {nativeBindingMethods} from './bindings.js';
 import {nativeCurrencyMethods,emitNativeCurrencyHelpers} from './currency.js';
 import {FLOAT_TYPES,nativeNumericMethods,emitNativeNumericHelpers,nativeParameterBytes} from './numeric.js';
 import {nativeControlArrayMethods} from './control-arrays.js';
@@ -138,9 +139,8 @@ class NativeCompiler {
   }
   publicVariable(name) { const matches = [...this.modules.values()].flatMap(m => [...m.globals.values()].filter(v => key(v.name) === key(name) && v.scope === 'public')); if (matches.length > 1) this.fail('Ambiguous global: ' + name); return matches[0]; }
   constant(node) {
-    if (node.kind !== 'id') return undefined; const name = key(node.name), c = this.context;
-    for (const map of [c?.proc.constantBindings, c?.module.module.constantBindings, c?.module.module.importedConstantBindings, c?.module.module.globalEnumMembers]) if (map?.has(name)) return map.get(name);
-    return CONSTANTS[name];
+    const binding=this.nativeConstant(node);if(binding)return binding.value;
+    return node.kind==='id'&&!this.variable(node)?CONSTANTS[key(node.name)]:undefined;
   }
   address(variable) { if(!variable)this.fail('Expression is not addressable'); if(variable.elementOf)return this.elementAddress(variable); this.rawStorageAddress(variable);return null; }
   load(variable) {
@@ -170,6 +170,7 @@ class NativeCompiler {
   ensure(object) { const form = object.form ? object : object.module; this.x.call(form.create); if(object.indexed)this.resolveControlHandle(object); }
   handle(object) { this.ensure(object); this.x.value(this.controlHandleRef(object)); }
   type(node) {
+    const bound=this.nativeConstant(node);if(bound)return bound.type;
     const currencyType=this.currencyType(node);if(currencyType)return currencyType;
     const numericType=this.numericType(node);if(numericType)return numericType;
     if (node.kind === 'group') return this.type(node.expr);
@@ -178,9 +179,9 @@ class NativeCompiler {
     if(node.kind==='call'){
       const name=node.callee.kind==='id'?key(node.callee.name).replace(/\$$/,''):'';
       if(['cstr','left','right','mid','chrw'].includes(name))return 'string';
-      const proc=this.resolveProcedure(node.callee);if(proc?.proc?.kind==='function')return key(proc.proc.returnType);
+      const result=this.nativeFunctionType(node);if(result)return result;
     }
-    if(node.kind==='id'){const proc=this.resolveProcedure(node);if(proc?.proc?.kind==='function')return key(proc.proc.returnType);}
+    if(node.kind==='id'||node.kind==='member'){const result=this.nativeFunctionType(node);if(result)return result;}
     if (node.kind === 'id' && key(node.name)==='caption' && this.context?.module.form && !this.variable(node)) return 'string';
     if (node.kind === 'literal') return typeof node.value === 'string' ? 'string' : 'long';
     const constant = this.constant(node); if (constant !== undefined) return typeof constant === 'string' ? 'string' : 'long';
@@ -193,6 +194,7 @@ class NativeCompiler {
   textExpression(node) { this.expression(node); if(this.type(node)==='currency'){this.currencyToString();}else if(FLOAT_TYPES.has(this.type(node))){this.floatToString(this.type(node));}else if(this.type(node)!=='string'){this.x.push().call('native:string:from-int');this.ownString();}this.stringPointer(); }
   expression(node) {
     if (!node) this.fail('Missing expression'); const x = this.x;
+    const bound=this.nativeConstant(node);if(bound)return this.emitNativeConstant(bound);
     if(this.currencyOperation(node))return;
     if(this.numericExpression(node))return;
     if (node.kind === 'group') return this.expression(node.expr);
@@ -639,7 +641,7 @@ class NativeCompiler {
     return {bytes:linked.bytes,report:{target:'win32-aot',architecture:'x86',format:'PE32',extraction:false,runtime:'Win32 system DLLs; no embedded JavaScript engine or VB6 runtime',graphics:'native Windows controls / GDI, not WebGPU',size:linked.bytes.length,imports:linked.imports,sections:linked.sections,sourceMap:this.sourceMap.map(s => ({...s,rva:linked.symbols[s.symbol]})),limits:['Typed integer/Single/Double/Currency/String storage, fixed/dynamic arrays and error recovery; unsupported VB constructs fail compilation.','Native controls use Windows theme/font metrics, not pixel-identical VB6 styling.','WebGPU remains a separate Electron target.']}};
   }
 }
-Object.assign(NativeCompiler.prototype,nativeStorageMethods,nativeErrorMethods,nativeArrayMethods,nativeNumericMethods,nativeControlArrayMethods,nativeCurrencyMethods);
+Object.assign(NativeCompiler.prototype,nativeBindingMethods,nativeStorageMethods,nativeErrorMethods,nativeArrayMethods,nativeNumericMethods,nativeControlArrayMethods,nativeCurrencyMethods);
 export function compileWin32(project, options = {}) {
   if (options.graphics && options.graphics !== 'gdi') throw new NativeCompileError('The freestanding Win32 target uses native controls/GDI; use the desktop target for WebGPU');
   if (options.arch && options.arch !== 'x86') throw new NativeCompileError('The freestanding compiler currently emits x86 PE32');

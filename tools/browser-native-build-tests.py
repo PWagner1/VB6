@@ -88,6 +88,8 @@ with sync_playwright() as pw:
             fixtures.extend((numeric_dir, name) for name in ('Calculator', 'AotNumbers', 'AotIndexedControls'))
         if currency_dir.exists():
             fixtures.append((currency_dir, 'AotCurrency'))
+            if (currency_dir / 'AotCurrencyBindings.vb6web').exists():
+                fixtures.append((currency_dir, 'AotCurrencyBindings'))
         for fixture_dir, fixture_name in fixtures:
             fixture_project = json.loads((fixture_dir / f'{fixture_name}.vb6web').read_text())
             fixture_expected = (fixture_dir / f'{fixture_name}.exe').read_bytes()

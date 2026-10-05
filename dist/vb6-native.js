@@ -1896,8 +1896,97 @@ class X86 {
 return {X86};
 })();
 
-/* currency.js */
+/* bindings.js */
 __modules[23]=(()=>{
+const {VBCurrency}=__modules[6];
+/** Resolve compile-time values with their declaration types intact. The source
+ * binder has already evaluated these expressions without executing user code.
+ * Keep lexical visibility separate from the machine representation in EAX. */
+
+const key = value => String(value).toLowerCase();
+const declarations = new WeakMap();
+const supported = new Set(['byte','integer','long','boolean','single','double','currency','string']);
+function scopeDeclarations(scope) {
+  let result = declarations.get(scope);
+  if (!result) {
+    result = new Map();
+    for (const d of scope.declarations || []) result.set(key(d.name),d);
+    for (const ins of scope.code || []) if (ins.op === 'dim') for (const d of ins.decls) result.set(key(d.name),d);
+    declarations.set(scope,result);
+  }
+  return result;
+}
+function descriptor(c, scope, name) {
+  if (!scope?.constantBindings?.has(name)) return null;
+  const value = scope.constantBindings.get(name), d = scopeDeclarations(scope).get(name);
+  let type = key(d?.storageType || d?.type || 'variant');
+  if (type === 'variant') {
+    type = value instanceof VBCurrency ? 'currency' : typeof value === 'string' ? 'string' :
+      typeof value === 'boolean' ? 'boolean' : typeof value === 'number' ?
+      Number.isInteger(value) && value >= -32768 && value <= 32767 ? 'integer' :
+      Number.isInteger(value) && value >= -2147483648 && value <= 2147483647 ? 'long' : 'double' : 'unknown';
+  }
+  if (!supported.has(type)) c.fail('Native constant type is not supported: '+(d?.name || name)+' As '+type);
+  return {value,type};
+}
+const nativeBindingMethods = {
+  nativeConstant(node) {
+    if (!node) return null;
+    while (node.kind === 'group') node = node.expr;
+    const context = this.context, owner = context?.module, module = owner?.module;
+    if (node.kind === 'id') {
+      const name = key(node.name);
+      const local = descriptor(this,context?.proc,name);
+      if (local) return local;
+      // A local/parameter/return slot or module variable shadows public constants.
+      if (context?.locals?.has(name) || owner?.globals?.has(name)) return null;
+      const own = descriptor(this,module,name);
+      if (own) return own;
+      const matches = [];
+      for (const m of this.modules.values()) if (m !== owner) {
+        const d = scopeDeclarations(m.module).get(name);
+        if (d?.constant && d.scope !== 'private' && (m.module.kind === 'module' || d.enumName)) matches.push(m.module);
+      }
+      if (matches.length > 1) this.fail('Ambiguous native constant: '+node.name);
+      return matches.length ? descriptor(this,matches[0],name) : null;
+    }
+    if (node.kind !== 'member' || node.object.kind !== 'id') return null;
+    const name = key(node.name), namespace = key(node.object.name), m = this.modules.get(namespace);
+    if (m) {
+      const d = scopeDeclarations(m.module).get(name);
+      if (!d?.constant) return null;
+      if (m !== owner && d.scope === 'private') this.fail('Private native constant is not accessible: '+node.object.name+'.'+node.name);
+      return descriptor(this,m.module,name);
+    }
+    const enumeration = module?.enumBindings?.get(namespace);
+    if (enumeration?.ambiguous) this.fail('Ambiguous native enum: '+node.object.name);
+    if (enumeration && Object.hasOwn(enumeration.values,name)) return {type:'long',value:enumeration.values[name]};
+    return null;
+  },
+  emitNativeConstant(binding) {
+    const {type,value} = binding;
+    if (type === 'currency') this.x.value(this.currencyLiteral(value));
+    else if (type === 'single' || type === 'double') this.x.value(this.floatLiteral(value));
+    else if (type === 'string') this.x.value(this.string(value));
+    else {
+      const n = typeof value === 'boolean' ? value ? -1 : 0 : value;
+      if (!Number.isInteger(n) || n < -2147483648 || n > 2147483647) this.fail('Invalid native integral constant');
+      this.x.value(n);
+    }
+  },
+  nativeFunctionType(node) {
+    if (node.kind === 'group') return this.nativeFunctionType(node.expr);
+    const target = this.resolveProcedure(node.kind === 'call' ? node.callee : node);
+    const signature = target?.proc || target;
+    return signature?.kind === 'function' ? key(signature.returnType) : null;
+  }
+};
+
+return {nativeBindingMethods};
+})();
+
+/* currency.js */
+__modules[24]=(()=>{
 const {VBCurrency}=__modules[6];
 /** Native CY values are signed 64-bit integers scaled by 10,000. Expressions
  * return an immutable snapshot address in EAX; ABI returns use EDX:EAX. Never
@@ -2075,7 +2164,7 @@ return {nativeCurrencyMethods,emitNativeCurrencyHelpers};
 })();
 
 /* numeric.js */
-__modules[24]=(()=>{
+__modules[25]=(()=>{
 
 /** Native Single/Double lowering. Floating expressions return an immutable Double
  * snapshot address in EAX; only ABI returns use ST(0). No live FPU values span
@@ -2344,7 +2433,7 @@ return {FLOAT_TYPES,nativeParameterBytes,nativeNumericMethods,emitNativeNumericH
 })();
 
 /* control-arrays.js */
-__modules[25]=(()=>{
+__modules[26]=(()=>{
 
 /** Statically designed control arrays, including Index event arguments. Each
  * element retains its own native HWND and ID; no flattened duplicate names. */
@@ -2422,7 +2511,7 @@ return {nativeControlArrayMethods};
 })();
 
 /* storage.js */
-__modules[26]=(()=>{
+__modules[27]=(()=>{
 
 /** Native storage lowering. BSTR ownership is explicit; no JS or VB runtime is embedded. */
 const key = value => String(value).toLowerCase();
@@ -2594,7 +2683,7 @@ return {MAX_NATIVE_STRING,storageLayout,nativeStorageMethods,emitNativeStorageHe
 })();
 
 /* arrays.js */
-__modules[27]=(()=>{
+__modules[28]=(()=>{
 
 /** Owned SAFEARRAY storage for fixed/dynamic native arrays. The internal array ABI
  * passes a descriptor slot by reference; it is never exposed to browser code. */
@@ -2798,7 +2887,7 @@ return {NATIVE_ARRAY_MAX_BYTES,NATIVE_ARRAY_MAX_RANK,nativeArrayMethods,emitNati
 })();
 
 /* errors.js */
-__modules[28]=(()=>{
+__modules[29]=(()=>{
 
 /** Structured native VB error frames. Windows callback boundaries never unwind across user32. */
 const NATIVE_ERROR_FRAME_BYTES = 48;
@@ -2933,17 +3022,19 @@ return {NATIVE_ERROR_FRAME_BYTES,nativeErrorMethods,emitNativeErrorHelpers};
 })();
 
 /* compiler.js */
-__modules[29]=(()=>{
+__modules[30]=(()=>{
 const {normalizeProject}=__modules[13];
 const {compileProject, parseParameters}=__modules[20];
 const {PE32Image, BinarySection}=__modules[21];
 const {X86}=__modules[22];
-const {nativeCurrencyMethods,emitNativeCurrencyHelpers}=__modules[23];
-const {FLOAT_TYPES,nativeNumericMethods,emitNativeNumericHelpers,nativeParameterBytes}=__modules[24];
-const {nativeControlArrayMethods}=__modules[25];
-const {MAX_NATIVE_STRING,storageLayout,nativeStorageMethods,emitNativeStorageHelpers}=__modules[26];
-const {nativeArrayMethods,emitNativeArrayHelpers}=__modules[27];
-const {NATIVE_ERROR_FRAME_BYTES,nativeErrorMethods,emitNativeErrorHelpers}=__modules[28];
+const {nativeBindingMethods}=__modules[23];
+const {nativeCurrencyMethods,emitNativeCurrencyHelpers}=__modules[24];
+const {FLOAT_TYPES,nativeNumericMethods,emitNativeNumericHelpers,nativeParameterBytes}=__modules[25];
+const {nativeControlArrayMethods}=__modules[26];
+const {MAX_NATIVE_STRING,storageLayout,nativeStorageMethods,emitNativeStorageHelpers}=__modules[27];
+const {nativeArrayMethods,emitNativeArrayHelpers}=__modules[28];
+const {NATIVE_ERROR_FRAME_BYTES,nativeErrorMethods,emitNativeErrorHelpers}=__modules[29];
+
 
 
 
@@ -3083,9 +3174,8 @@ class NativeCompiler {
   }
   publicVariable(name) { const matches = [...this.modules.values()].flatMap(m => [...m.globals.values()].filter(v => key(v.name) === key(name) && v.scope === 'public')); if (matches.length > 1) this.fail('Ambiguous global: ' + name); return matches[0]; }
   constant(node) {
-    if (node.kind !== 'id') return undefined; const name = key(node.name), c = this.context;
-    for (const map of [c?.proc.constantBindings, c?.module.module.constantBindings, c?.module.module.importedConstantBindings, c?.module.module.globalEnumMembers]) if (map?.has(name)) return map.get(name);
-    return CONSTANTS[name];
+    const binding=this.nativeConstant(node);if(binding)return binding.value;
+    return node.kind==='id'&&!this.variable(node)?CONSTANTS[key(node.name)]:undefined;
   }
   address(variable) { if(!variable)this.fail('Expression is not addressable'); if(variable.elementOf)return this.elementAddress(variable); this.rawStorageAddress(variable);return null; }
   load(variable) {
@@ -3115,6 +3205,7 @@ class NativeCompiler {
   ensure(object) { const form = object.form ? object : object.module; this.x.call(form.create); if(object.indexed)this.resolveControlHandle(object); }
   handle(object) { this.ensure(object); this.x.value(this.controlHandleRef(object)); }
   type(node) {
+    const bound=this.nativeConstant(node);if(bound)return bound.type;
     const currencyType=this.currencyType(node);if(currencyType)return currencyType;
     const numericType=this.numericType(node);if(numericType)return numericType;
     if (node.kind === 'group') return this.type(node.expr);
@@ -3123,9 +3214,9 @@ class NativeCompiler {
     if(node.kind==='call'){
       const name=node.callee.kind==='id'?key(node.callee.name).replace(/\$$/,''):'';
       if(['cstr','left','right','mid','chrw'].includes(name))return 'string';
-      const proc=this.resolveProcedure(node.callee);if(proc?.proc?.kind==='function')return key(proc.proc.returnType);
+      const result=this.nativeFunctionType(node);if(result)return result;
     }
-    if(node.kind==='id'){const proc=this.resolveProcedure(node);if(proc?.proc?.kind==='function')return key(proc.proc.returnType);}
+    if(node.kind==='id'||node.kind==='member'){const result=this.nativeFunctionType(node);if(result)return result;}
     if (node.kind === 'id' && key(node.name)==='caption' && this.context?.module.form && !this.variable(node)) return 'string';
     if (node.kind === 'literal') return typeof node.value === 'string' ? 'string' : 'long';
     const constant = this.constant(node); if (constant !== undefined) return typeof constant === 'string' ? 'string' : 'long';
@@ -3138,6 +3229,7 @@ class NativeCompiler {
   textExpression(node) { this.expression(node); if(this.type(node)==='currency'){this.currencyToString();}else if(FLOAT_TYPES.has(this.type(node))){this.floatToString(this.type(node));}else if(this.type(node)!=='string'){this.x.push().call('native:string:from-int');this.ownString();}this.stringPointer(); }
   expression(node) {
     if (!node) this.fail('Missing expression'); const x = this.x;
+    const bound=this.nativeConstant(node);if(bound)return this.emitNativeConstant(bound);
     if(this.currencyOperation(node))return;
     if(this.numericExpression(node))return;
     if (node.kind === 'group') return this.expression(node.expr);
@@ -3584,7 +3676,7 @@ class NativeCompiler {
     return {bytes:linked.bytes,report:{target:'win32-aot',architecture:'x86',format:'PE32',extraction:false,runtime:'Win32 system DLLs; no embedded JavaScript engine or VB6 runtime',graphics:'native Windows controls / GDI, not WebGPU',size:linked.bytes.length,imports:linked.imports,sections:linked.sections,sourceMap:this.sourceMap.map(s => ({...s,rva:linked.symbols[s.symbol]})),limits:['Typed integer/Single/Double/Currency/String storage, fixed/dynamic arrays and error recovery; unsupported VB constructs fail compilation.','Native controls use Windows theme/font metrics, not pixel-identical VB6 styling.','WebGPU remains a separate Electron target.']}};
   }
 }
-Object.assign(NativeCompiler.prototype,nativeStorageMethods,nativeErrorMethods,nativeArrayMethods,nativeNumericMethods,nativeControlArrayMethods,nativeCurrencyMethods);
+Object.assign(NativeCompiler.prototype,nativeBindingMethods,nativeStorageMethods,nativeErrorMethods,nativeArrayMethods,nativeNumericMethods,nativeControlArrayMethods,nativeCurrencyMethods);
 function compileWin32(project, options = {}) {
   if (options.graphics && options.graphics !== 'gdi') throw new NativeCompileError('The freestanding Win32 target uses native controls/GDI; use the desktop target for WebGPU');
   if (options.arch && options.arch !== 'x86') throw new NativeCompileError('The freestanding compiler currently emits x86 PE32');
@@ -3596,8 +3688,8 @@ return {NativeCompileError,extractNativeDeclarations,compileWin32};
 })();
 
 /* entry.js */
-__modules[30]=(()=>{
-const {compileWin32, NativeCompileError, extractNativeDeclarations}=__modules[29];
+__modules[31]=(()=>{
+const {compileWin32, NativeCompileError, extractNativeDeclarations}=__modules[30];
 const {PE32Image, BinarySection, PE32_BASE}=__modules[21];
 const {X86}=__modules[22];
 /** Standalone browser/worker SDK: no Node, DOM, compiler service or binary template. */
@@ -3607,5 +3699,5 @@ const {X86}=__modules[22];
 
 return {compileWin32,NativeCompileError,extractNativeDeclarations,PE32Image,BinarySection,PE32_BASE,X86};
 })();
-globalThis["VB6Native"]=__modules[30];
+globalThis["VB6Native"]=__modules[31];
 })();
