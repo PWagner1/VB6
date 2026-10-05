@@ -1,26 +1,36 @@
-name: Native project integration snapshot
+name: Finalize native project integration
 on:
   pull_request:
     branches: [main]
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: finalize-native-project-integration
+  cancel-in-progress: false
 jobs:
-  snapshot:
+  integrate:
     if: github.head_ref == 'feature/native-vb6-project-roundtrip' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-      - name: Capture repository and verify interrupted delta
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply verified source delta without replacing concurrent work
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p /tmp/native-review
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
           git fetch origin main
-          git bundle create /tmp/native-review/repository.bundle HEAD refs/remotes/origin/main
+          git merge --no-edit origin/main
           python - <<'PY'
           import base64, hashlib, json, lzma, os, pathlib, urllib.request
           chunks=[]
@@ -28,11 +38,61 @@ jobs:
               request=urllib.request.Request('https://api.github.com/repos/wieslawsoltes/VB6/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
               chunks.append(base64.b64decode(json.load(urllib.request.urlopen(request))['content']))
           data=b''.join(chunks)
-          assert hashlib.sha256(data).hexdigest()=='d06868956fdf5f6601bd2a1635356f1410ecb6c431e0fe65db8e00e34fd95f20'
-          pathlib.Path('/tmp/native-review/delta.json').write_bytes(lzma.decompress(data))
+          assert hashlib.sha256(data).hexdigest()=='d06868956fdf5f6601bd2a1635356f1410ecb6c431e0fe65db8e00e34fd95f20', 'Interrupted delta digest mismatch'
+          delta=json.loads(lzma.decompress(data))
+          allowed={'src/ide/main.js','src/ide/native-projects.js','src/project/formats.js','src/project/native-project.js','src/project/native-source.js','src/project/native-text.js','tests/native-projects.test.mjs','tests/native-directory.test.mjs','tools/native-project-browser-tests.py','package.json','README.md','.gitignore','.github/workflows/project-compatibility.yml'}
+          assert {item['path'] for item in delta['files']} == allowed
+          outputs=[]
+          for item in delta['files']:
+              path=pathlib.Path(item['path'])
+              if item.get('beforeGit'):
+                  before=path.read_bytes()
+                  actual=hashlib.sha1(b'blob '+str(len(before)).encode()+b'\0'+before).hexdigest()
+                  assert actual==item['beforeGit'], 'Concurrent edit: '+str(path)
+              else:
+                  assert not path.exists(), 'Unexpected existing path: '+str(path)
+                  before=b''
+              if 'text' in item:
+                  text=item['text']
+              else:
+                  text=before.decode('utf-8')
+                  for start,end,replacement in sorted(item['edits'],key=lambda edit:edit[0],reverse=True):
+                      assert 0 <= start <= end <= len(text)
+                      text=text[:start]+replacement+text[end:]
+              output=text.encode('utf-8')
+              assert hashlib.sha256(output).hexdigest()==item['sha256'], 'Output digest mismatch: '+str(path)
+              outputs.append((path,output))
+          for path,output in outputs:
+              path.parent.mkdir(parents=True,exist_ok=True)
+              path.write_bytes(output)
+          print('Applied',len(outputs),'verified source files')
           PY
+      - name: Build and test recovered implementation
+        run: |
+          mkdir -p /tmp/native-integration
+          npm run build 2>&1 | tee /tmp/native-integration/build.log
+          npm run test:project-files 2>&1 | tee /tmp/native-integration/native-tests.log
+          npm test 2>&1 | tee /tmp/native-integration/all-tests.log
+      - name: Commit complete implementation and remove temporary workflows
+        run: |
+          rm .github/workflows/native-integrate.yml .github/workflows/native-recovery.yml
+          git add src tests tools dist .github/workflows README.md package.json .gitignore
+          git diff --cached --check
+          git commit -m 'feat: complete native VB6 project and group open/save integration'
+          git push origin HEAD:refs/heads/feature/native-vb6-project-roundtrip
+          git rev-parse HEAD > /tmp/native-integration/commit.txt
+          git bundle create /tmp/native-integration/repository.bundle HEAD refs/remotes/origin/main
+      - run: python -m pip install playwright==1.57.0
+      - run: python -m playwright install --with-deps chromium
+      - name: Native project HTTP and standalone browser integration
+        env:
+          VB6_BROWSER: chromium
+        run: npm run test:project-browser 2>&1 | tee /tmp/native-integration/native-browser.log
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: native-project-review
-          path: /tmp/native-review/
+          name: native-integration-validation
+          path: |
+            /tmp/native-integration/
+            reports/native-projects/
           retention-days: 7
