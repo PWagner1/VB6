@@ -141,3 +141,7 @@ The browser's **File → Make <project>.exe (Win32 AOT)…** runs the direct com
 The desktop IDE now detaches and restores live tool/code panes through native windows, and its ARM64 portable build has been executed on a Windows ARM64 runner. This does not certify physical WebGPU: hosted x64/ARM64 tests explicitly exercised Canvas2D fallback. Classic compiler tests remain labelled mocks unless the separate licensed-toolchain job is run.
 
 See [Direct Win32/AOT contract, examples and SDK](docs/WIN32-AOT.md), [all Windows targets](docs/WINDOWS-BUILDS.md), and [earlier desktop validation](docs/NATIVE-VALIDATION.md). Full VB6 AOT parity, all-GPU rendering, COM/OCX/full Declare ABI and existing-binary browser emulation remain unfinished.
+
+## Original Visual Basic project files
+
+Open `.vbp` projects and `.vbg` groups from complete selected files, folders or ZIPs, alongside existing browser snapshots. Save native source/companion files as a ZIP or to an explicitly selected directory, or keep a `.vb6web` snapshot with native metadata. Unchanged bytes, source encodings, hidden attributes, duplicate project settings and unknown companions are retained; unsafe or unsupported native edits fail rather than silently discard data. Project-group switching keeps peer edits and detects shared-file conflicts. See [Native project files](docs/NATIVE-PROJECTS.md) for usage, filesystem safeguards, encoding choices and the distinction between file preservation and native COM/runtime compatibility.

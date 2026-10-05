@@ -44,6 +44,11 @@ try {
  $p=Launch 'AotArithmetic'
  Check 'native arithmetic and Declare executable exits' ($p.WaitForExit(15000))
  Check ('native arithmetic, recursion, ByRef, strings, branch/loop, Declare result '+$p.ExitCode) ($p.ExitCode -eq 0)
+ foreach($name in @('AotStorage','AotErrors')) {
+  $p=Launch $name
+  Check ($name+' self-checking native program exits') ($p.WaitForExit(20000))
+  Check ($name+' ownership, storage and control-flow assertions; actual '+$p.ExitCode) ($p.ExitCode -eq 0)
+ }
  $gui=Launch 'AotWindows';$script:window=[IntPtr]::Zero
  Until { $script:window=([AotWindowsTest]::Windows($gui.Id)|Where-Object { [AotWindowsTest]::Class($_) -eq 'VB6.Native.Form1' }|Select-Object -First 1);$script:window -and [AotWindowsTest]::IsWindowVisible($script:window) } 'native form'
  Check 'native top-level window' ([AotWindowsTest]::IsWindow($window))
@@ -93,7 +98,7 @@ try {
  [AotWindowsTest]::PostMessage($frame,0x10,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
  Check 'MDI frame shutdown' ($mdi.WaitForExit(15000))
  Check 'MDI exit code' ($mdi.ExitCode -eq 0)
- foreach($fault in @(@('AotOverflow',6),@('AotDivideZero',11),@('AotTextOverflow',6),@('AotTextMismatch',13))) {
+ foreach($fault in @(@('AotOverflow',6),@('AotDivideZero',11),@('AotTextOverflow',6),@('AotTextMismatch',13),@('AotArrayBounds',9),@('AotResumeWithoutError',20),@('AotDisabledHandler',9))) {
   $p=Launch $fault[0];$script:errorWindow=[IntPtr]::Zero
   Until { $script:errorWindow=([AotWindowsTest]::Windows($p.Id)|Where-Object { [AotWindowsTest]::Class($_) -eq '#32770' }|Select-Object -First 1);$script:errorWindow -and [AotWindowsTest]::IsWindowVisible($script:errorWindow) } ('runtime diagnostic '+$fault[0])
   $text=@([AotWindowsTest]::Children($errorWindow)|ForEach-Object { [AotWindowsTest]::Text($_) }) -join ' '

@@ -67,9 +67,9 @@ for(const code of [
   'Private Declare Function F Lib "../x" () As Long'
 ])test('unsupported native Declare fails without producing a plausible executable: '+code,()=>assert.throws(()=>extractNativeDeclarations({name:'M',code})));
 for(const [name,code] of [
-  ['floating storage','Dim n As Double'],['string storage','Dim s As String'],['arrays','Dim n(10) As Long'],
+  ['floating storage','Dim n As Double'],['dynamic arrays','Dim n() As Long'],
   ['unsupported arithmetic','Private Sub Form_Load()\n Dim n As Long\n n = 1 / 2\nEnd Sub'],
-  ['unsupported error handler','Private Sub Form_Load()\n On Error Resume Next\nEnd Sub'],
+
   ['unsupported event','Private Sub Form_KeyDown(KeyCode As Integer, Shift As Integer)\nEnd Sub'],
   ['ambiguous default variant','Private Sub F(n)\nEnd Sub']
 ])test('AOT fails closed for '+name,()=>assert.throws(()=>buildCode(code)));

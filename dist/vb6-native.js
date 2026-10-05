@@ -652,17 +652,95 @@ function decodeVariable(bytes,schema={},current,mode='binary'){const reader=new 
 return {encodeANSI,decodeANSI,makeRecord,recordLength,encodeVariable,decodeVariable};
 })();
 
-/* ../project/frx.js */
+/* ../project/binary-assets.js */
 __modules[8]=(()=>{
 const {VBError}=__modules[4];
-const {encodeANSI,decodeANSI}=__modules[7];
+
+const MAX_RESOURCE_BYTES=20*1024*1024;
+const fail=message=>{throw new VBError(message,1002);};
+function fromBase64(data){if(typeof data!=='string'||data.length>MAX_RESOURCE_BYTES*4/3+8)fail('invalid or oversized base64 resource');let binary;try{binary=atob(data);}catch{fail('invalid base64');}return Uint8Array.from(binary,c=>c.charCodeAt(0));}
+function toBase64(bytes){if(bytes.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');let result='';for(let at=0;at<bytes.length;at+=8192)result+=String.fromCharCode(...bytes.subarray(at,at+8192));return btoa(result);}
+
+return {fromBase64,toBase64};
+})();
+
+/* ../project/native-text.js */
+__modules[9]=(()=>{
+const {decodeANSI,encodeANSI}=__modules[7];
+const {VBError}=__modules[4];
+const {fromBase64,toBase64}=__modules[8];
+/** Native project text: preserve bytes, BOMs and line endings; never replace unmappable characters. */
+
+
+
+const NATIVE_ENCODINGS=['auto','windows-1252','windows-1250','windows-1251','windows-1253','windows-1254','windows-1255','windows-1256','windows-1257','windows-1258','windows-874','shift_jis','gbk','big5','euc-kr','utf-8','utf-16le','utf-16be'];
+const encoders=new Map();
+const fail=message=>{throw new VBError(message,1002);};
+function bytesOf(value){if(typeof value==='string')return new TextEncoder().encode(value);if(ArrayBuffer.isView(value))return new Uint8Array(value.buffer,value.byteOffset,value.byteLength);if(value instanceof ArrayBuffer)return new Uint8Array(value);if(Array.isArray(value))return Uint8Array.from(value);fail('Expected text, an ArrayBuffer or a byte array');}
+function equalBytes(a,b){a=bytesOf(a);b=bytesOf(b);return a.length===b.length&&a.every((v,i)=>v===b[i]);}
+function linesOf(text){return String(text).match(/[^\r\n]*(?:\r\n|\r|\n|$)/g)?.filter(Boolean)||[];}
+function lineBody(line){return line.replace(/[\r\n]+$/,'');}
+function lineEnding(line){return line.slice(lineBody(line).length);}
+function preferredEOL(text){return text.match(/\r\n|\r|\n/)?.[0]||'\r\n';}
+function unquote(value){const s=String(value).trim();return /^"(?:[^"]|"")*"$/.test(s)?s.slice(1,-1).replace(/""/g,'"'):s;}
+function nativePathValue(value){return /[\s"';]/.test(value)?quote(value):value;}
+function quote(value){return '"'+String(value).replace(/"/g,'""')+'"';}
+function commentAt(value){let quoted=false;for(let i=0;i<value.length;i++){if(value[i]==='"'){if(quoted&&value[i+1]==='"'){i++;continue;}quoted=!quoted;}else if(value[i]==="'"&&!quoted)return i;}return -1;}
+function replaceLineValue(line,value){const body=lineBody(line),match=body.match(/^(\s*[^=]+?\s*=\s*)(.*)$/);if(!match)return line;const at=commentAt(match[2]),tail=at<0?'':match[2].slice(at),space=at<0?'':match[2].slice(0,at).match(/\s*$/)[0];return match[1]+value+space+tail+lineEnding(line);}
+
+function decodeNativeBytes(bytes,encoding){return new TextDecoder(encoding).encoding==='windows-1252'?decodeANSI(bytes):new TextDecoder(encoding,{fatal:true,ignoreBOM:true}).decode(bytes);}
+function decodeNativeText(input,{encoding='auto'}={}){
+  // String callers have no original byte encoding; keep the legacy CRLF export convention.
+  if(typeof input==='string')return {text:input.replace(/\r\n|\r|\n/g,'\r\n'),encoding:'utf-8',bom:false};
+  const bytes=bytesOf(input);let label=encoding,bom=false,skip=0;
+  if(bytes[0]===0xef&&bytes[1]===0xbb&&bytes[2]===0xbf){label='utf-8';bom=true;skip=3;}
+  else if(bytes[0]===0xff&&bytes[1]===0xfe){label='utf-16le';bom=true;skip=2;}
+  else if(bytes[0]===0xfe&&bytes[1]===0xff){label='utf-16be';bom=true;skip=2;}
+  else if(label==='auto'){label='windows-1252';if(bytes.some(b=>b>=128))try{new TextDecoder('utf-8',{fatal:true}).decode(bytes);label='utf-8';}catch{}}
+  try{const decoder=new TextDecoder(label,{fatal:true,ignoreBOM:true});return {text:decodeNativeBytes(bytes.subarray(skip),decoder.encoding),encoding:decoder.encoding,bom,bytes:toBase64(bytes)};}
+  catch(error){fail('Cannot decode native source as '+label+': '+error.message);}
+}
+function legacyEncoder(label){
+  if(encoders.has(label))return encoders.get(label);
+  const decoder=new TextDecoder(label,{fatal:true,ignoreBOM:true}),map=new Map();
+  const add=bytes=>{try{const text=decoder.decode(bytes);if([...text].length===1&&text!=='\ufffd'&&!map.has(text))map.set(text,bytes.slice());}catch{}};
+  for(let a=0;a<256;a++)add(Uint8Array.of(a));
+  if(['shift_jis','gbk','big5','euc-kr'].includes(decoder.encoding))for(let a=0x81;a<=0xfe;a++)for(let b=0x40;b<=0xff;b++)add(Uint8Array.of(a,b));
+  encoders.set(label,map);return map;
+}
+function encodeNativeText(text,document={encoding:'windows-1252',bom:false},override){
+  document ||= {encoding:'windows-1252',bom:false};
+  const encoding=override&&override!=='auto'?new TextDecoder(override).encoding:document.encoding||'windows-1252';
+  if((!override||override==='auto')&&text===document.text&&document.bytes!==undefined)return fromBase64(document.bytes);
+  if(encoding==='utf-8'){
+    if(!document.bom)return text;
+    const data=new TextEncoder().encode(text),bytes=new Uint8Array(data.length+3);bytes.set([239,187,191]);bytes.set(data,3);return bytes;
+  }
+  if(/^utf-16(?:le|be)$/.test(encoding)){
+    const skip=document.bom?2:0,bytes=new Uint8Array(text.length*2+skip),view=new DataView(bytes.buffer),little=encoding==='utf-16le';if(skip)view.setUint16(0,0xfeff,little);for(let i=0;i<text.length;i++)view.setUint16(skip+i*2,text.charCodeAt(i),little);return bytes;
+  }
+  if(new TextDecoder(encoding).encoding==='windows-1252'){const bytes=encodeANSI(text);return bytes.every(b=>b<128)?text:bytes;}
+  const map=legacyEncoder(encoding),parts=[];let length=0;
+  for(const char of text){const data=map.get(char);if(!data)fail('Character '+quote(char)+' is not representable in '+encoding+'. Choose a matching native source encoding; no file was written.');parts.push(data);length+=data.length;}
+  const bytes=new Uint8Array(length);let offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.length;}
+  // ASCII text remains string-compatible with the existing sourceFiles API.
+  return bytes.every(b=>b<128)?text:bytes;
+}
+
+return {NATIVE_ENCODINGS,bytesOf,equalBytes,linesOf,lineBody,lineEnding,preferredEOL,unquote,nativePathValue,quote,commentAt,replaceLineValue,decodeNativeBytes,decodeNativeText,encodeNativeText};
+})();
+
+/* ../project/frx.js */
+__modules[10]=(()=>{
+const {VBError}=__modules[4];
+const {decodeNativeBytes,encodeNativeText,bytesOf}=__modules[9];
 /** Bounded FRX records; no COM deserialization, native code, or remote resource loads. */
 
 
 const MAX_RESOURCE_BYTES=20*1024*1024;
 const fail=message=>{throw new VBError('FRX: '+message,1002);};
 function cleanProjectPath(path){
-  path=String(path).replace(/\\/g,'/');if(!path||/^[\/]|^[a-z]:|\0/i.test(path))fail('unsafe project path: '+path);
+  path=String(path).replace(/\\/g,'/');if(!path||path.length>4096||/^[\/]|:|[\x00-\x1f]/i.test(path))fail('unsafe project path: '+path);
   const out=[];for(const part of path.split('/')){if(!part||part==='.')continue;if(part==='..'){if(!out.length)fail('path escapes project root: '+path);out.pop();}else out.push(part);}if(!out.length)fail('empty project path');return out.join('/');
 }
 function relativeProjectPath(fromFile,toFile){const a=cleanProjectPath(fromFile).split('/');a.pop();const b=cleanProjectPath(toFile).split('/');while(a.length&&b.length&&a[0].toLowerCase()===b[0].toLowerCase()){a.shift();b.shift();}return [...a.map(()=> '..'),...b].join('\\');}
@@ -679,11 +757,11 @@ function view(bytes){return new DataView(bytes.buffer,bytes.byteOffset,bytes.byt
 function range(bytes,offset,length){if(!Number.isInteger(offset)||!Number.isInteger(length)||offset<0||length<0||offset+length>bytes.length)fail('truncated record or out-of-range offset');}
 function resourceOffset(value){if(typeof value==='number'){if(Number.isInteger(value)&&value>=0)return value;}else if(/^[0-9a-f]{1,8}$/i.test(value||''))return parseInt(value,16);fail('invalid hexadecimal resource offset');}
 /** Decode only the record identified by the property; never guess by scanning untrusted bytes. */
-function readFRXRecord(input,offset,property='Text'){
+function readFRXRecord(input,offset,property='Text',{encoding='windows-1252'}={}){
   const bytes=input instanceof Uint8Array?input:new Uint8Array(input);if(bytes.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');offset=resourceOffset(offset);range(bytes,offset,1);const v=view(bytes),remaining=bytes.length-offset;
   if(property==='List'){
     range(bytes,offset,4);const count=v.getUint16(offset,true),signature=v.getUint16(offset+2,true);if(![3,7].includes(signature))fail('unsupported list signature');let cursor=offset+4;const items=[];
-    for(let i=0;i<count;i++){range(bytes,cursor,2);const size=v.getUint16(cursor,true);cursor+=2;range(bytes,cursor,size);items.push(decodeANSI(bytes.subarray(cursor,cursor+size)));cursor+=size;}return {kind:'list',items,signature,bytesRead:cursor-offset};
+    for(let i=0;i<count;i++){range(bytes,cursor,2);const size=v.getUint16(cursor,true);cursor+=2;range(bytes,cursor,size);items.push(decodeNativeBytes(bytes.subarray(cursor,cursor+size),encoding));cursor+=size;}return {kind:'list',items,signature,bytesRead:cursor-offset};
   }
   if(remaining>=12&&v.getUint32(offset+4,true)===0x746c){const size=v.getUint32(offset,true),payload=v.getUint32(offset+8,true);if(size!==payload+8)fail('inconsistent picture lengths');range(bytes,offset+12,payload);return {kind:'picture',bytes:bytes.slice(offset+12,offset+12+payload),bytesRead:12+payload};}
   let header=1,length=bytes[offset],kind='text8';
@@ -692,11 +770,11 @@ function readFRXRecord(input,offset,property='Text'){
   else if(remaining>=4&&bytes.subarray(offset,offset+4).includes(0)){header=4;length=v.getUint32(offset,true);kind='text32';}
   range(bytes,offset+header,length);return {kind,bytes:bytes.slice(offset+header,offset+header+length),bytesRead:header+length};
 }
-function writeFRXRecord(value,kind='text32',{signature=3}={}){
+function writeFRXRecord(value,kind='text32',{signature=3,encoding='windows-1252'}={}){
   if(kind==='list'){
-    if(!Array.isArray(value)||value.length>65535)fail('list must contain at most 65,535 items');const encoded=value.map(item=>encodeANSI(String(item)));for(const b of encoded)if(b.length>65535)fail('list item exceeds 65,535 bytes');const size=4+encoded.reduce((n,b)=>n+2+b.length,0);if(size>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const out=new Uint8Array(size),v=view(out);v.setUint16(0,value.length,true);v.setUint16(2,[3,7].includes(signature)?signature:3,true);let at=4;for(const b of encoded){v.setUint16(at,b.length,true);out.set(b,at+2);at+=2+b.length;}return out;
+    if(!Array.isArray(value)||value.length>65535)fail('list must contain at most 65,535 items');const encoded=value.map(item=>bytesOf(encodeNativeText(String(item),{encoding})));for(const b of encoded)if(b.length>65535)fail('list item exceeds 65,535 bytes');const size=4+encoded.reduce((n,b)=>n+2+b.length,0);if(size>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const out=new Uint8Array(size),v=view(out);v.setUint16(0,value.length,true);v.setUint16(2,[3,7].includes(signature)?signature:3,true);let at=4;for(const b of encoded){v.setUint16(at,b.length,true);out.set(b,at+2);at+=2+b.length;}return out;
   }
-  const bytes=kind==='picture'?new Uint8Array(value):encodeANSI(String(value));if(bytes.length>MAX_RESOURCE_BYTES-12)fail('resource exceeds 20 MiB limit');let header=kind==='picture'?12:kind==='text8'&&bytes.length<255?1:kind==='text16'&&bytes.length<=65535?3:4;const out=new Uint8Array(header+bytes.length),v=view(out);if(header===12){v.setUint32(0,bytes.length+8,true);v.setUint32(4,0x746c,true);v.setUint32(8,bytes.length,true);}else if(header===4)v.setUint32(0,bytes.length,true);else if(header===3){out[0]=255;v.setUint16(1,bytes.length,true);}else out[0]=bytes.length;out.set(bytes,header);return out;
+  const bytes=kind==='picture'?new Uint8Array(value):bytesOf(encodeNativeText(String(value),{encoding}));if(bytes.length>MAX_RESOURCE_BYTES-12)fail('resource exceeds 20 MiB limit');let header=kind==='picture'?12:kind==='text8'&&bytes.length<255?1:kind==='text16'&&bytes.length<=65535?3:4;const out=new Uint8Array(header+bytes.length),v=view(out);if(header===12){v.setUint32(0,bytes.length+8,true);v.setUint32(4,0x746c,true);v.setUint32(8,bytes.length,true);}else if(header===4)v.setUint32(0,bytes.length,true);else if(header===3){out[0]=255;v.setUint16(1,bytes.length,true);}else out[0]=bytes.length;out.set(bytes,header);return out;
 }
 function rasterDataURL(input){
   let bytes=input,mime='';const b=bytes,v=view(bytes),starts=hex=>hex.every((n,i)=>b[i]===n);
@@ -721,23 +799,23 @@ function hydrateResources(project,diagnostics=[]){
       const path=resolveProjectPath(paths,module.sourcePath||module.name+'.frm',reference.resource);
       if(!path)fail('missing resource file '+reference.resource);if(!cache.has(path))cache.set(path,fromBase64(project.assets[path].data));
       const lower=key.toLowerCase();if(!TEXT_PROPERTIES.has(lower)&&!['list','picture','icon','mouseicon'].includes(lower))fail('property '+key+' is retained as an opaque resource');
-      const record=readFRXRecord(cache.get(path),reference.offset,lower==='list'?'List':reference.text?'LongText':key);let value;
+      const record=readFRXRecord(cache.get(path),reference.offset,lower==='list'?'List':reference.text?'LongText':key,{encoding:module.resourceEncoding||'windows-1252'});let value;
       if(lower==='list')value=record.items;else if(['picture','icon','mouseicon'].includes(lower)){if(record.kind!=='picture')fail('picture header not supported');value=rasterDataURL(record.bytes);if(!value)fail('native/OLE/metafile picture retained; no raster browser decoder');}
-      else {if(record.kind==='picture')fail('text references a picture record');value=decodeANSI(record.bytes);}
-      node.resourceBindings ||= {};node.resourceBindings[key]={reference:{...reference},assetPath:path,kind:record.kind,signature:record.signature,originalValue:structuredClone(value)};node.properties[key]=value;
+      else {if(record.kind==='picture')fail('text references a picture record');value=decodeNativeBytes(record.bytes,module.resourceEncoding||'windows-1252');}
+      node.resourceBindings ||= {};node.resourceBindings[key]={reference:{...reference},assetPath:path,kind:record.kind,signature:record.signature,encoding:module.resourceEncoding||'windows-1252',originalValue:structuredClone(value)};node.properties[key]=value;
     }catch(error){diagnostics.push({severity:'warning',source:module.name,message:node.name+'.'+key+': '+error.message+' (original bytes and reference retained).'});}
   }}return project;
 }
 /** Native export is copy-on-write: original blobs never move; edited entries append. */
 function prepareResources(project){
-  const modules=structuredClone(project.modules),files={};for(const [path,asset]of Object.entries(project.assets||{})){cleanProjectPath(path);if(asset.encoding==='base64')files[path]=fromBase64(asset.data);}
+  const modules=structuredClone(project.modules),files=Object.create(null);for(const [path,asset]of Object.entries(project.assets||{})){cleanProjectPath(path);if(asset.encoding==='base64')files[path]=fromBase64(asset.data);}
   const append=(path,value,kind,options)=>{path=cleanProjectPath(path);const record=writeFRXRecord(value,kind,options),before=files[path]||new Uint8Array();if(before.length+record.length>MAX_RESOURCE_BYTES)fail('resource exceeds 20 MiB limit');const all=new Uint8Array(before.length+record.length);all.set(before);all.set(record,before.length);files[path]=all;return before.length.toString(16).toUpperCase().padStart(4,'0');};
   for(const module of modules){if(!module.form)continue;const source=module.sourcePath||module.name+'.frm';for(const node of [module.form,...module.form.controls,...module.form.menus])for(const [key,value]of Object.entries(node.properties||{})){
-    if(value?.resource)continue;const binding=node.resourceBindings?.[key],same=binding&&JSON.stringify(value)===JSON.stringify(binding.originalValue);if(same){node.properties[key]=binding.reference;continue;}
+    if(value?.resource)continue;const binding=node.resourceBindings?.[key],same=binding&&JSON.stringify(value)===JSON.stringify(binding.originalValue);if(same){const reference={...binding.reference};let resolved;try{resolved=resolveProjectPath(Object.keys(files),source,reference.resource);}catch{}if(resolved?.toLowerCase()!==binding.assetPath.toLowerCase())reference.resource=relativeProjectPath(source,binding.assetPath);node.properties[key]=reference;continue;}
     const lower=key.toLowerCase(),picture=['picture','icon','mouseicon'].includes(lower),list=lower==='list'&&Array.isArray(value),text=TEXT_PROPERTIES.has(lower)&&typeof value==='string';
     if(!binding&&!list&&!(picture&&value)&&!(text&&(/[\r\n]/.test(value)||value.length>255)))continue;
     if(picture&&!value){delete node.properties[key];continue;}if(!list&&!picture&&!text)fail('cannot serialize edited opaque resource '+node.name+'.'+key);
-    const path=binding?.assetPath||source.replace(/\.frm$/i,'.frx'),kind=picture?'picture':list?'list':binding?.kind||'text32',offset=append(path,picture?rasterBytes(value):value,kind,{signature:binding?.signature});
+    const path=binding?.assetPath||source.replace(/\.(frm|ctl|pag|dob|dsr)$/i,(_,ext)=>'.'+({frm:'frx',ctl:'ctx',pag:'pgx',dob:'dox',dsr:'dsx'})[ext.toLowerCase()]),kind=picture?'picture':list?'list':'text32',offset=append(path,picture?rasterBytes(value):value,kind,{signature:binding?.signature,encoding:binding?.encoding||module.resourceEncoding||'windows-1252'});
     node.properties[key]={resource:relativeProjectPath(source,path),offset,...(text?{text:true}:{})};
   }}return {modules,files};
 }
@@ -746,9 +824,9 @@ return {MAX_RESOURCE_BYTES,cleanProjectPath,relativeProjectPath,resolveProjectPa
 })();
 
 /* ../project/res.js */
-__modules[9]=(()=>{
+__modules[11]=(()=>{
 const {VBError}=__modules[4];
-const {cleanProjectPath,fromBase64,toBase64,MAX_RESOURCE_BYTES}=__modules[8];
+const {cleanProjectPath,fromBase64,toBase64,MAX_RESOURCE_BYTES}=__modules[10];
 /** Windows 32-bit .res containers. Payloads remain opaque unless explicitly edited. */
 
 
@@ -840,9 +918,9 @@ return {RESOURCE_TYPES,resourceKey,normalizeResources,readRES,writeRES,decodeStr
 })();
 
 /* ../project/model.js */
-__modules[10]=(()=>{
+__modules[12]=(()=>{
 const { clone, lower, safeName }=__modules[1];
-const {normalizeResources}=__modules[9];
+const {normalizeResources}=__modules[11];
 const { VBError }=__modules[4];
 
 
@@ -877,16 +955,16 @@ function validateForm(form,moduleName){
     if(items.some(item=>item.properties.Index===undefined||c.properties.Index===undefined||item.properties.Index===c.properties.Index||item.type!==c.type))throw new VBError('Duplicate or incompatible control array name/index: '+c.name,1002);
     items.push(c);controls.set(key,items);allNames.add(key);
   }
-  for(const m of form.menus){validateNode(m);const key=lower(m.name);if(allNames.has(key))throw new VBError('Duplicate menu or control name: '+m.name,1002);allNames.add(key);menus.set(key,m);}
-  for(const [nodes,lookup]of [[form.controls,controls],[form.menus,menus]])for(const node of nodes){const seen=new Set([lower(node.name)]);let current=node;
-    while(current.parent){const key=lower(current.parent);if(seen.has(key))throw new VBError('Cyclic parent relationship: '+node.name,1002);seen.add(key);const result=lookup.get(key);if(!result)throw new VBError('Missing parent '+current.parent+' for '+node.name,1002);const parent=Array.isArray(result)?result[0]:result;current.parent=parent.name;current=parent;}
+  for(const m of form.menus){validateNode(m);const key=lower(m.name),items=menus.get(key)||[];if(controls.has(key))throw new VBError('Duplicate menu or control name: '+m.name,1002);if(m.properties.Index!==undefined){const index=Number(m.properties.Index);if(!Number.isInteger(index)||index<0||index>32767)throw new VBError('Invalid menu array index: '+m.name,380);m.properties.Index=index;}if(items.some(item=>item.properties.Index===undefined||m.properties.Index===undefined||item.properties.Index===m.properties.Index))throw new VBError('Duplicate menu or control name/index: '+m.name,1002);items.push(m);menus.set(key,items);allNames.add(key);}
+  for(const [nodes,lookup]of [[form.controls,controls],[form.menus,menus]])for(const node of nodes){const seen=new Set([node.id]);let current=node;
+    while(current.parent){const key=lower(current.parent);const result=lookup.get(key);if(!result)throw new VBError('Missing parent '+current.parent+' for '+node.name,1002);const parent=Array.isArray(result)?result.find(p=>p.id===current.nativeParentId)||result[0]:result;if(seen.has(parent.id))throw new VBError('Cyclic parent relationship: '+node.name,1002);seen.add(parent.id);current.parent=parent.name;current=parent;}
   }
 }
 function normalizeProject(value){
   if(!value||typeof value!=='object'||!Array.isArray(value.modules))throw new VBError('Not a VB6 Studio project',1002);
   if(value.schema!==PROJECT_SCHEMA)throw new VBError('Unsupported project schema: '+value.schema,1002);
-  if(!value.modules.length||value.modules.length>1000)throw new VBError('Project must contain 1–1,000 modules',7);
-  const project=clone(value);project.id ||= newId();project.name=safeName(project.name);project.settings={...newProject().settings,...project.settings};project.references ||= [];project.assets ||= {};project.vfs ||= {files:{}};project.appSettings ||= {};
+  if(!value.modules.length&&!value.nativeProject||value.modules.length>1000)throw new VBError('Project must contain 1–1,000 modules',7);
+  const project=clone(value);project.id ||= newId();project.name=project.nativeProject?.document?String(project.name).slice(0,100):safeName(project.name);project.settings={...newProject().settings,...project.settings};project.references ||= [];project.assets ||= {};project.vfs ||= {files:{}};project.appSettings ||= {};
   const names=new Set(),ids=new Set();for(const m of project.modules){
     if(!m||typeof m.name!=='string'||!/^[A-Za-z_]\w*$/.test(m.name))throw new VBError('Invalid module name: '+m?.name,1002);
     if(names.has(lower(m.name)))throw new VBError('Duplicate module: '+m.name,1002);names.add(lower(m.name));
@@ -908,7 +986,7 @@ return {PROJECT_SCHEMA,newId,BASIC_CONTROL_TYPES,EXTENDED_CONTROL_TYPES,CONTROL_
 })();
 
 /* ../runtime/constants.js */
-__modules[11]=(()=>{
+__modules[13]=(()=>{
 
 /** Shared immutable compiler/runtime intrinsic constants. */
 const VB_CONSTANTS = {
@@ -935,10 +1013,10 @@ return {VB_CONSTANTS};
 })();
 
 /* ../language/binding.js */
-__modules[12]=(()=>{
+__modules[14]=(()=>{
 const {VBError}=__modules[2];
 const {lower}=__modules[1];
-const {VB_CONSTANTS}=__modules[11];
+const {VB_CONSTANTS}=__modules[13];
 const {VBCurrency,coerce,unary,binary}=__modules[6];
 
 
@@ -1051,7 +1129,7 @@ return {bindConstants};
 })();
 
 /* ../language/default-types.js */
-__modules[13]=(()=>{
+__modules[15]=(()=>{
 const {VBError}=__modules[4];
 
 /** VB6 module-scoped default types. Later VB.NET-only integer types are not accepted. */
@@ -1078,7 +1156,7 @@ return {DEFAULT_TYPE_NAMES,addDefaultTypes,defaultIdentifierType};
 })();
 
 /* ../language/interfaces.js */
-__modules[14]=(()=>{
+__modules[16]=(()=>{
 const {lower}=__modules[1];
 
 const json=x=>JSON.stringify(x);
@@ -1122,7 +1200,7 @@ return {validateInterfaces};
 })();
 
 /* ../language/expression.js */
-__modules[15]=(()=>{
+__modules[17]=(()=>{
 const { tokenize, VBError }=__modules[4];
 
 const PRECEDENCE = {imp:1,eqv:2,xor:3,or:4,and:5,'=':7,'<>':7,'<':7,'>':7,'<=':7,'>=':7,is:7,like:7,'&':8,'+':9,'-':9,mod:10,'\\':11,'*':12,'/':12,'^':14};
@@ -1198,9 +1276,9 @@ return {ExpressionParser,parseExpression,parseCall};
 })();
 
 /* ../language/conditional.js */
-__modules[16]=(()=>{
+__modules[18]=(()=>{
 const { VBError }=__modules[4];
-const { parseExpression }=__modules[15];
+const { parseExpression }=__modules[17];
 const { binary, unary, truth }=__modules[6];
 
 
@@ -1240,13 +1318,13 @@ return {preprocess};
 })();
 
 /* ../language/compiler.js */
-__modules[17]=(()=>{
-const {bindConstants}=__modules[12];
-const {defaultIdentifierType,addDefaultTypes}=__modules[13];
-const {validateInterfaces}=__modules[14];
-const { preprocess }=__modules[16];
+__modules[19]=(()=>{
+const {bindConstants}=__modules[14];
+const {defaultIdentifierType,addDefaultTypes}=__modules[15];
+const {validateInterfaces}=__modules[16];
+const { preprocess }=__modules[18];
 const { VBError, logicalLines, splitTop, tokenize }=__modules[4];
-const { parseExpression, parseCall }=__modules[15];
+const { parseExpression, parseCall }=__modules[17];
 const { lower }=__modules[1];
 
 
@@ -1450,7 +1528,7 @@ return {parseDeclarations,parseParameters,compileModule,compileProject,validateC
 })();
 
 /* pe32.js */
-__modules[18]=(()=>{
+__modules[20]=(()=>{
 
 /** Deterministic PE32 linker. Browser-safe: no Node, native compiler, or binary template. */
 const PE32_BASE = 0x400000;
@@ -1571,7 +1649,7 @@ return {PE32_BASE,BinarySection,PE32Image};
 })();
 
 /* x86.js */
-__modules[19]=(()=>{
+__modules[21]=(()=>{
 
 /** Small checked x86 assembler for the native VB backend (stdcall, 32-bit registers). */
 class X86 {
@@ -1614,12 +1692,342 @@ class X86 {
 return {X86};
 })();
 
+/* storage.js */
+__modules[22]=(()=>{
+
+/** Native storage lowering. BSTR ownership is explicit; no JS or VB runtime is embedded. */
+const key = value => String(value).toLowerCase();
+const types = new Set(['byte', 'integer', 'long', 'boolean', 'string']);
+const MAX_NATIVE_STRING = 1024 * 1024;
+
+function boundValue(compiler, node, module, proc) {
+  if (node === null) return module.optionBase;
+  if (node.kind === 'group') return boundValue(compiler, node.expr, module, proc);
+  if (node.kind === 'literal' && Number.isInteger(node.value)) return node.value;
+  if (node.kind === 'id') {
+    for (const map of [proc?.constantBindings, module.constantBindings, module.importedConstantBindings, module.globalEnumMembers]) {
+      if (map?.has(key(node.name))) return Number(map.get(key(node.name)));
+    }
+  }
+  if (node.kind === 'unary') {
+    const n = boundValue(compiler, node.expr, module, proc);
+    if (node.op === '-') return -n;
+    if (node.op === '+') return n;
+  }
+  if (node.kind === 'binary') {
+    const a = boundValue(compiler, node.left, module, proc), b = boundValue(compiler, node.right, module, proc);
+    if (node.op === '+') return a + b;
+    if (node.op === '-') return a - b;
+    if (node.op === '*') return a * b;
+    if (node.op === '\\' && b) return Math.trunc(a / b);
+  }
+  compiler.fail('Native fixed-array bounds must be integral constant expressions', module);
+}
+
+function storageLayout(compiler, decl, module, proc) {
+  if (!types.has(key(decl.type)) || decl.autoNew || decl.withEvents) compiler.fail('Native storage requires Byte, Integer, Long, Boolean or String: ' + decl.name, module);
+  if (decl.fixedLength !== null && decl.fixedLength !== undefined && (!Number.isInteger(decl.fixedLength) || decl.fixedLength < 1 || decl.fixedLength > 65535)) compiler.fail('Invalid fixed String length: ' + decl.name, module);
+  const elementBytes = key(decl.type) === 'byte' ? 1 : ['integer', 'boolean'].includes(key(decl.type)) ? 2 : 4;
+  decl.nativeElementBytes = elementBytes;
+  let count = 1;
+  if (decl.bounds !== null && decl.bounds !== undefined) {
+    if (decl.parameter || !decl.bounds.length) compiler.fail('Dynamic arrays and whole-array parameters are not yet lowered by the native target', module);
+    if (decl.bounds.length > 8) compiler.fail('Native fixed arrays support at most eight dimensions', module);
+    decl.nativeBounds = decl.bounds.map(([low, high]) => {
+      const lower = boundValue(compiler, low, module, proc), upper = boundValue(compiler, high, module, proc);
+      if (![lower, upper].every(n => Number.isInteger(n) && n >= -2147483648 && n <= 2147483647) || upper < lower) compiler.fail('Invalid native array bounds: ' + decl.name, module);
+      const stride = count * elementBytes;
+      count *= upper - lower + 1;
+      if (!Number.isSafeInteger(count) || count * elementBytes > 1024 * 1024) compiler.fail('Native fixed array exceeds the one MiB storage limit', module);
+      return {lower, upper, stride};
+    });
+  }
+  decl.nativeCount = count;
+  decl.nativeBytes = Math.ceil(count * elementBytes / 4) * 4;
+  return decl;
+}
+
+const nativeStorageMethods = {
+  allocateStorage(variable) {
+    this.data.align(4).label(variable.label).zero(variable.nativeBytes || 4);
+  },
+  temporaryString() {
+    const c = this.context;
+    const variable = {name: this.x.unique('string-temp'), type: 'String', nativeCount: 1, nativeBytes: 4, temporary: true};
+    if (c?.proc?.name) {
+      c.size += 4;
+      if (c.size > 512 * 1024) this.fail('Native procedure workspace exceeds 512 KiB');
+      variable.offset = -c.size;
+      (c.stringTemps ||= []).push(variable);
+    } else { variable.label = variable.name; this.allocateStorage(variable); }
+    return variable;
+  },
+  /** Adopt a freshly allocated BSTR in EAX. Each source expression has its own slot. */
+  ownString() {
+    const variable = this.temporaryString(), x = this.x;
+    x.push(); this.address(variable); x.emit(0x89, 0xc3, 0x5f, 0xff, 0x33).invoke('oleaut32.dll', 'SysFreeString').emit(0x89, 0x3b, 0x89, 0xf8);
+    return variable;
+  },
+  stringPointer() {
+    const ready = this.x.unique(); this.x.test().branch('ne', ready).value(this.string('')).label(ready);
+  },
+  storageExpression(variable, node) {
+    if (variable.nativeBounds && !variable.elementOf) this.fail('Whole-array assignment is not yet lowered by the native target');
+    if (key(variable.type) === 'string') this.textExpression(node); else this.numeric(node);
+  },
+  rawStorageAddress(variable) {
+    if (variable.owner?.form) this.x.call(variable.owner.initialize);
+    if (variable.label) this.x.value(variable.label);
+    else if (variable.parameter && variable.byRef) this.x.value({argument: variable.offset});
+    else this.x.local(variable.offset);
+  },
+  elementAddress(variable) {
+    const x = this.x, array = variable.elementOf;
+    x.value(0).push();
+    for (let i = 0; i < variable.indices.length; i++) {
+      const {lower, upper, stride} = array.nativeBounds[i];
+      this.numeric(variable.indices[i]);
+      x.compare(lower).branch('l', 'error:9').compare(upper).branch('g', 'error:9');
+      x.emit(0x2d).imm(lower).emit(0x69, 0xc0).imm(stride).emit(0x59, 0x01, 0xc8).push();
+    }
+    this.rawStorageAddress(array); x.emit(0x59, 0x01, 0xc8);
+  },
+  zeroStorage(variable) {
+    this.rawStorageAddress(variable);
+    this.x.emit(0x89, 0xc7, 0xb9).imm((variable.nativeBytes || 4) / 4).emit(0x31, 0xc0, 0xfc, 0xf3, 0xab);
+  },
+  clearStringStorage(variable) {
+    this.x.push(variable.nativeCount || 1); this.rawStorageAddress(variable); this.x.push().call('native:string:clear');
+  },
+  initializeFixedString(variable) {
+    if (key(variable.type) !== 'string' || !variable.fixedLength || (variable.parameter||variable.ownedParameter)) return;
+    const x = this.x;
+    x.push(variable.fixedLength).push(variable.nativeCount || 1); this.rawStorageAddress(variable); x.push().call('native:string:initialize-fixed');
+  },
+  arrayBoundCall(node, upper) {
+    if (node.args.length < 1 || node.args.length > 2) this.fail('LBound/UBound expects an array and optional dimension');
+    const array = this.variable(node.args[0]);
+    if (!array?.nativeBounds || array.elementOf) this.fail('LBound/UBound requires a native fixed array');
+    const label = this.x.unique('array-bounds'); this.ro.align(4).label(label);
+    for (const dim of array.nativeBounds) this.ro.u32(upper ? dim.upper : dim.lower);
+    this.numeric(node.args[1] || {kind:'literal', value:1});
+    this.x.compare(1).branch('l','error:9').compare(array.nativeBounds.length).branch('g','error:9').emit(0x8b,0x04,0x85).addr(label,-4);
+  },
+  eraseStorage(expr) {
+    const variable = this.variable(expr);
+    if (!variable?.nativeBounds || variable.elementOf) this.fail('Native Erase requires a fixed array');
+    if (key(variable.type) === 'string') this.clearStringStorage(variable); else this.zeroStorage(variable);
+    this.initializeFixedString(variable);
+  },
+  stringBuiltin(node, name) {
+    const x = this.x, args = node.args;
+    if (['len','lenb','ascw','strptr'].includes(name)) {
+      if (args.length !== 1 || this.type(args[0]) !== 'string') this.fail(name + ' expects one String argument');
+      if(name==='strptr'){
+        const variable=this.variable(args[0]);
+        if(variable){if(variable.nativeBounds&&!variable.elementOf)this.fail('StrPtr requires a String element, not an array');this.address(variable);x.emit(0x8b,0x00);}
+        else if(args[0].kind==='id'&&key(args[0].name)==='vbnullstring')x.value(0);
+        else this.expression(args[0]);
+        return true;
+      }
+      this.expression(args[0]);
+      if (name === 'ascw') { x.push().push().invoke('oleaut32.dll','SysStringLen').test().branch('e','error:5').emit(0x58,0x0f,0xbf,0x00); }
+      else { x.push().invoke('oleaut32.dll','SysStringLen'); if (name === 'lenb') x.emit(0xd1,0xe0); }
+      return true;
+    }
+    if (['left','right','mid','chrw'].includes(name)) {
+      if (name === 'chrw') {
+        if (args.length !== 1) this.fail('ChrW expects one argument'); this.numeric(args[0]); x.push().call('native:string:chrw');
+      } else {
+        if (args.length < 2 || args.length > (name === 'mid' ? 3 : 2)) this.fail(name + ' argument count mismatch');
+        this.textExpression(args[0]); x.push(); this.numeric(args[1]); x.push();
+        if (name === 'mid') { this.numeric(args[2] || {kind:'literal',value:MAX_NATIVE_STRING}); x.emit(0x5b,0x59).push().emit(0x53,0x51).call('native:string:mid'); }
+        else x.emit(0x5b,0x59,0x53,0x51).call('native:string:'+name);
+      }
+      this.ownString(); return true;
+    }
+    return false;
+  }
+};
+
+function emitNativeStorageHelpers(compiler) {
+  const x = compiler.x, api = 'oleaut32.dll';
+  x.label('native:string:numeric-text').enter().api(api,'SysStringLen',[{argument:8}]).emit(0x89,0xc3).api('kernel32.dll','lstrlenW',[{argument:8}]).emit(0x39,0xd8).branch('ne','error:13').value({argument:8}).leave(4);
+  x.label('native:string:copy').enter().api(api,'SysStringLen',[{argument:8}]).compare(MAX_NATIVE_STRING).branch('g','error:7').push().push({argument:8}).invoke(api,'SysAllocStringLen').test().branch('e','error:7').leave(4);
+  x.label('native:string:assign').enter().push({argument:12}).call('native:string:copy').emit(0x89,0xc7).value({argument:8}).emit(0x89,0xc3,0xff,0x33).invoke(api,'SysFreeString').emit(0x89,0x3b,0x89,0xf8).leave(8);
+  x.label('native:string:from-int').enter(4).value(0).emit(0x89,0x45,0xfc).api(api,'VarBstrFromI4',[{argument:8},0x400,0,{address:-4}]).test().branch('s','error:7').value({argument:-4}).leave(4);
+  x.label('native:string:concat').enter(4).api(api,'SysStringLen',[{argument:8}]).emit(0x89,0xc3).api(api,'SysStringLen',[{argument:12}]).emit(0x01,0xd8).compare(MAX_NATIVE_STRING).branch('g','error:7').value(0).emit(0x89,0x45,0xfc).api(api,'VarBstrCat',[{argument:8},{argument:12},{address:-4}]).test().branch('s','error:7').value({argument:-4}).leave(8);
+  // Compare UTF-16 code units with explicit lengths, including embedded NULs.
+  const loop=x.unique(), equal=x.unique(), less=x.unique(), greater=x.unique(), compareLengths=x.unique(), done=x.unique();
+  x.label('native:string:compare').enter(8).api(api,'SysStringLen',[{argument:8}]).emit(0x89,0x45,0xfc).api(api,'SysStringLen',[{argument:12}]).emit(0x89,0x45,0xf8).value({argument:8}).emit(0x89,0xc6).value({argument:12}).emit(0x89,0xc7,0x31,0xdb);
+  x.label(loop).emit(0x3b,0x5d,0xfc).branch('ge',compareLengths).emit(0x3b,0x5d,0xf8).branch('ge',compareLengths).emit(0x0f,0xb7,0x04,0x5e,0x0f,0xb7,0x14,0x5f,0x39,0xd0).branch('b',less).branch('ne',greater).emit(0x43).jump(loop);
+  x.label(compareLengths).value({argument:-4}).emit(0x3b,0x45,0xf8).branch('l',less).branch('g',greater).label(equal).value(0).jump(done).label(less).value(-1).jump(done).label(greater).value(1).label(done).leave(8);
+  const clearLoop=x.unique(), clearDone=x.unique();
+  x.label('native:string:clear').enter().value({argument:8}).emit(0x89,0xc6).value({argument:12}).emit(0x89,0xc7).label(clearLoop).emit(0x85,0xff).branch('e',clearDone).emit(0xff,0x36).invoke(api,'SysFreeString').emit(0xc7,0x06,0,0,0,0,0x83,0xc6,4,0x4f).jump(clearLoop).label(clearDone).value(0).leave(8);
+  // Allocate exactly the requested fixed width; pad with spaces and copy a bounded prefix.
+  const widthOK=x.unique(), fill=x.unique(), copyDone=x.unique();
+  x.label('native:string:fixed').enter().value({argument:12}).compare(1).branch('l','error:5').compare(65535).branch('g','error:5').emit(0x89,0xc3).push().push(0).invoke(api,'SysAllocStringLen').test().branch('e','error:7').emit(0x89,0xc6,0x89,0xc7,0x89,0xd9,0xb8).imm(32).emit(0xfc,0xf3,0x66,0xab).api(api,'SysStringLen',[{argument:8}]).emit(0x39,0xd8).branch('le',widthOK).emit(0x89,0xd8).label(widthOK).emit(0x89,0xc1,0x89,0xf7).value({argument:8}).emit(0x56,0x89,0xc6,0xfc,0xf3,0x66,0xa5,0x58).leave(8);
+  const initLoop=x.unique(), initDone=x.unique();
+  x.label('native:string:initialize-fixed').enter().value({argument:8}).emit(0x89,0xc6).value({argument:12}).emit(0x89,0xc7).label(initLoop).emit(0x85,0xff).branch('e',initDone).push({argument:16}).push(0).call('native:string:fixed').emit(0x89,0xc3,0xff,0x36).invoke(api,'SysFreeString').emit(0x89,0x1e,0x83,0xc6,4,0x4f).jump(initLoop).label(initDone).value(0).leave(12);
+  for (const side of ['left','right']) {
+    const countOK=x.unique();
+    x.label('native:string:'+side).enter().value({argument:12}).test().branch('s','error:5').emit(0x89,0xc3).api(api,'SysStringLen',[{argument:8}]).emit(0x39,0xc3).branch('le',countOK).emit(0x89,0xc3).label(countOK);
+    if (side==='right') x.emit(0x29,0xd8,0x01,0xc0).emit(0x03,0x45,8); else x.value({argument:8});
+    x.emit(0x53,0x50).invoke(api,'SysAllocStringLen').test().branch('e','error:7').leave(8);
+  }
+  const startOK=x.unique(), lengthOK=x.unique(), sliceEmpty=x.unique(), sliceEnd=x.unique();
+  x.label('native:string:mid').enter().value({argument:12}).compare(1).branch('l','error:5').emit(0x48,0x89,0xc6).value({argument:16}).test().branch('s','error:5').emit(0x89,0xc3).api(api,'SysStringLen',[{argument:8}]).emit(0x39,0xc6).branch('ge',sliceEmpty).emit(0x29,0xf0,0x39,0xc3).branch('le',lengthOK).emit(0x89,0xc3).label(lengthOK).value({argument:8}).emit(0x8d,0x04,0x70,0x53,0x50).invoke(api,'SysAllocStringLen').test().branch('e','error:7').jump(sliceEnd).label(sliceEmpty).api(api,'SysAllocStringLen',[0,0]).test().branch('e','error:7').label(sliceEnd).leave(12);
+  x.label('native:string:chrw').enter().value({argument:8}).compare(-32768).branch('l','error:5').compare(65535).branch('g','error:5').push(1).local(8).push().invoke(api,'SysAllocStringLen').test().branch('e','error:7').leave(4);
+}
+
+return {MAX_NATIVE_STRING,storageLayout,nativeStorageMethods,emitNativeStorageHelpers};
+})();
+
+/* errors.js */
+__modules[23]=(()=>{
+
+/** Structured native VB error frames. Windows callback boundaries never unwind across user32. */
+const NATIVE_ERROR_FRAME_BYTES = 48;
+const key = value => String(value).toLowerCase();
+const mem = memory => ({memory});
+const arg = argument => ({argument});
+const E = 'native:error:';
+const DESCRIPTIONS = new Map([[5,'Invalid procedure call or argument'],[6,'Overflow'],[7,'Out of memory'],[9,'Subscript out of range'],[11,'Division by zero'],[13,'Type mismatch'],[20,'Resume without error']]);
+// Metadata is relative to the native VB procedure's EBP, before its user locals.
+const F = {previous:-4,stack:-8,dispatch:-12,handler:-16,active:-20,current:-24,next:-28,fault:-32,resumeNext:-36,line:-40,erl:-44,source:-48};
+const localStore = (x, offset) => x.emit(0x89,0x85).imm(offset);
+const localImmediate = (x, offset, value) => { x.value(value);localStore(x,offset); };
+
+const nativeErrorMethods = {
+  prepareErrors() {
+    for (const name of ['frame','pending','number','description','source','erl']) this.slot(E+name);
+  },
+  errorProperty(node) {
+    if(node.kind!=='member'||node.object.kind!=='id'||key(node.object.name)!=='err')return null;
+    const name=key(node.name);
+    if(!['number','description','source'].includes(name))this.fail('Native Err property is not implemented: '+node.name);
+    return name;
+  },
+  errorExpression(node) {
+    const property=this.errorProperty(node),x=this.x;
+    if(property){x.value(mem(E+property));if(property!=='number'){x.push().call('native:string:copy');this.ownString();}return true;}
+    if(node.kind==='id'&&key(node.name)==='erl'){x.value(mem(E+'erl'));return true;}
+    return false;
+  },
+  errorCall(node) {
+    const callee=node.callee,x=this.x;
+    if(callee.kind==='id'&&key(callee.name)==='erl'){
+      if(node.args.length)this.fail('Erl takes no arguments');x.value(mem(E+'erl'));return true;
+    }
+    if(callee.kind!=='member'||callee.object.kind!=='id'||key(callee.object.name)!=='err')return false;
+    const name=key(callee.name);
+    if(name==='clear'&&!node.args.length){x.call(E+'clear');return true;}
+    if(name==='raise'&&node.args.length===1){this.numeric(node.args[0]);x.jump(E+'raise');return true;}
+    this.fail('Native Err supports Clear and Raise(number); custom source/help arguments are not yet lowered');
+  },
+  errorCheckpoint(context, index, instruction) {
+    const x=this.x;
+    localImmediate(x,F.current,context.label+':'+index);
+    localImmediate(x,F.next,context.label+':'+(index+1));
+    localImmediate(x,F.line,instruction.line||0);
+  },
+  errorInstruction(instruction,context) {
+    const x=this.x;
+    if(instruction.op==='lineNumber'){localImmediate(x,F.erl,instruction.number);return true;}
+    if(instruction.op==='onError'){
+      localImmediate(x,F.handler,instruction.mode==='goto'?context.label+':'+instruction.target:instruction.mode==='next'?-1:0);
+      localImmediate(x,F.active,0);localImmediate(x,F.fault,0);
+      x.call(E+'clear');return true;
+    }
+    if(instruction.op==='raiseError'){this.numeric(instruction.expr);x.jump(E+'raise');return true;}
+    if(instruction.op==='resume'){
+      x.value(arg(F.fault)).test().branch('e','error:20');
+      if(instruction.mode==='next')x.value(arg(F.resumeNext));
+      else if(instruction.mode==='goto')x.value(context.label+':'+instruction.target);
+      x.push();localImmediate(x,F.active,0);localImmediate(x,F.fault,0);x.call(E+'clear').emit(0x58,0xff,0xe0);return true;
+    }
+    return false;
+  },
+  checkNativeError(target=this.context?.label+':error-dispatch') {
+    this.x.emit(0x83,0x3d).addr(E+'pending').emit(0).branch('ne',target);
+  },
+  enterErrorFrame(context) {
+    const x=this.x;
+    for(const offset of Object.values(F))localImmediate(x,offset,0);
+    x.value(mem(E+'frame'));localStore(x,F.previous);
+    x.emit(0x89,0xe8).store(E+'frame');
+    x.emit(0x89,0xe0);localStore(x,F.stack);
+    localImmediate(x,F.dispatch,context.label+':error-dispatch');
+    localImmediate(x,F.source,this.string(context.module.name));
+    localImmediate(x,F.current,context.label+':0');localImmediate(x,F.next,context.label+':0');
+  },
+  leaveErrorFrame() {
+    // EAX is the return value; restoring the prior frame must not overwrite it.
+    this.x.emit(0x8b,0x95).imm(F.previous).emit(0x89,0x15).addr(E+'frame');
+  },
+  emitErrorDispatch(context) {
+    const x=this.x,autoNext=x.unique();
+    x.label(context.label+':error-dispatch');
+    // A caller may have partially evaluated argument or expression stacks. Discard
+    // those slots before cleanup or entering a handler; all managed values have owners.
+    x.value(arg(F.stack)).emit(0x89,0xc4);
+    x.value(arg(F.handler)).test().branch('e',context.label+':error-return');
+    x.emit(0x83,0xbd).imm(F.active).emit(0).branch('ne',context.label+':error-return');
+    x.value(arg(F.current));localStore(x,F.fault);x.value(arg(F.next));localStore(x,F.resumeNext);
+    x.value(0).store(E+'pending');
+    x.value(arg(F.handler)).compare(-1).branch('e',autoNext);
+    x.push();localImmediate(x,F.active,1);x.emit(0x58,0xff,0xe0);
+    x.label(autoNext).value(arg(F.next)).emit(0xff,0xe0);
+  },
+  enterCallbackBoundary(offset) {
+    // A window procedure is entered through a Windows ABI frame. Never transfer
+    // control non-locally across that frame into a suspended Show/SendMessage caller.
+    const x=this.x;x.value(mem(E+'frame'));localStore(x,offset);x.value(0).store(E+'frame');
+  },
+  leaveCallbackBoundary(offset) {
+    this.x.emit(0x8b,0x95).imm(offset).emit(0x89,0x15).addr(E+'frame');
+  }
+};
+
+function emitNativeErrorHelpers(compiler) {
+  const x=compiler.x, unknown=x.unique(),sourceDone=x.unique();
+  x.label(E+'clear').value(0);
+  for(const name of ['pending','number','description','source','erl'])x.store(E+name);
+  x.emit(0xc3);
+  for(const number of DESCRIPTIONS.keys())x.label('error:'+number).value(number).jump(E+'raise');
+  x.label(E+'raise');
+  // VB Error numbers are nonzero unsigned 16-bit values for this backend.
+  x.compare(1).branch('l',unknown).compare(65535).branch('g',unknown);
+  const valid=x.unique();x.jump(valid).label(unknown).value(5).label(valid).store(E+'number');
+  x.value(compiler.string('Application-defined or object-defined error')).store(E+'description');
+  const described=x.unique();
+  for(const [number,text]of DESCRIPTIONS){const next=x.unique();x.value(mem(E+'number')).compare(number).branch('ne',next).value(compiler.string(text)).store(E+'description').jump(described).label(next);}
+  x.label(described).value(0).store(E+'erl').value(compiler.string(compiler.project.name)).store(E+'source');
+  x.value(mem(E+'frame')).test().branch('e',sourceDone).emit(0x89,0xc2,0x8b,0x42,F.source&255).store(E+'source').emit(0x8b,0x42,F.erl&255).store(E+'erl');
+  x.label(sourceDone).value(1).store(E+'pending');
+  x.value(mem(E+'frame')).test().branch('e',E+'fatal').emit(0x89,0xc5,0x8b,0x65,F.stack&255,0xff,0x65,F.dispatch&255);
+  x.label(E+'fatal');
+  // Disable non-local transfers before constructing the final diagnostic itself.
+  x.value(0).store(E+'frame');
+  const fatalReady=x.unique();
+  for(const number of DESCRIPTIONS.keys()){const next=x.unique();x.value(mem(E+'number')).compare(number).branch('ne',next).value(compiler.string('Run-time error '+number)).jump(fatalReady).label(next);}
+  x.value(compiler.string('Run-time error (application-defined)'));
+  x.label(fatalReady).emit(0x89,0xc3).push(16).push(compiler.errorTitle).emit(0x53).push(0).invoke('user32.dll','MessageBoxW').api('kernel32.dll','ExitProcess',[mem(E+'number')]);
+}
+
+return {NATIVE_ERROR_FRAME_BYTES,nativeErrorMethods,emitNativeErrorHelpers};
+})();
+
 /* compiler.js */
-__modules[20]=(()=>{
-const {normalizeProject}=__modules[10];
-const {compileProject, parseParameters}=__modules[17];
-const {PE32Image, BinarySection}=__modules[18];
-const {X86}=__modules[19];
+__modules[24]=(()=>{
+const {normalizeProject}=__modules[12];
+const {compileProject, parseParameters}=__modules[19];
+const {PE32Image, BinarySection}=__modules[20];
+const {X86}=__modules[21];
+const {MAX_NATIVE_STRING,storageLayout,nativeStorageMethods,emitNativeStorageHelpers}=__modules[22];
+const {NATIVE_ERROR_FRAME_BYTES,nativeErrorMethods,emitNativeErrorHelpers}=__modules[23];
+
+
 
 
 
@@ -1666,7 +2074,7 @@ class NativeCompiler {
     this.image = new PE32Image(); this.text = this.image.section('.text', 0x60000020); this.ro = this.image.section('.rdata', 0x40000040); this.data = this.image.section('.data', 0xc0000040);
     this.x = new X86(this.text, this.image); this.modules = new Map(); this.strings = new Map(); this.sourceMap = []; this.bufferCount = 0;
     this.slot('instance'); this.slot('live-forms'); this.data.align(4).label('msg').zero(32);
-    this.title = this.string(project.name); this.errorTitle = this.string('VB6 native runtime error');
+    this.title = this.string(project.name); this.errorTitle = this.string('VB6 native runtime error'); this.prepareErrors();
     for (const module of this.program.modules.values()) this.prepareModule(module);
     const parents = [...this.modules.values()].filter(m => m.form?.type === 'MDIForm');
     if (parents.length > 1) this.fail('Only one MDI parent is supported'); this.mdi = parents[0];
@@ -1674,29 +2082,31 @@ class NativeCompiler {
   }
   fail(message, context = this.context) { throw new NativeCompileError(message, context?.module?.name || context?.name || '', this.instruction?.line || 0); }
   slot(label, value = 0) { this.data.align(4).label(label).u32(value); return label; }
-  string(text) { text = String(text); if (text.includes('\0') || text.length > 4095) this.fail('Native text must be NUL-free and at most 4095 UTF-16 units'); if (!this.strings.has(text)) { const name = 'string:' + this.strings.size; this.ro.align(2).label(name).utf16(text); this.strings.set(text,name); } return this.strings.get(text); }
+  string(text) { text = String(text); if (text.length > MAX_NATIVE_STRING) this.fail('Native text exceeds 1,048,576 UTF-16 units'); if (!this.strings.has(text)) { const name = 'string:' + this.strings.size; this.ro.align(4).u32(text.length * 2).label(name).utf16(text); this.strings.set(text,name); } return this.strings.get(text); }
   buffer() { if(this.context?.proc?.name) { this.context.size+=8192; if(this.context.size>512*1024)this.fail('Native procedure text workspace exceeds 512 KiB'); return {address:-this.context.size}; } if (++this.bufferCount > 1024) this.fail('Native text-buffer limit exceeded'); const name = 'buffer:' + this.bufferCount; this.data.align(4).label(name).zero(8192); return name; }
-  scalar(decl) { if (!INT_TYPES.has(key(decl.type)) || decl.bounds !== null || decl.autoNew || decl.withEvents || decl.fixedLength) this.fail('Native scalar storage requires Byte, Integer, Long or Boolean: ' + decl.name); }
+  scalar(decl) { return storageLayout(this,decl,this.preparingModule,this.preparingProcedure); }
   prepareModule(module) {
+    this.preparingModule=module;this.preparingProcedure=null;
     if (!['form','module'].includes(module.kind) || module.interfaces.length || Object.keys(module.types).length) this.fail('Native AOT does not yet lower classes, interfaces or UDTs', module);
     const result = {module,name:module.name,form:module.form,globals:new Map(),procedures:new Map(),controls:new Map(),externals:this.externals.get(key(module.name))};
     this.modules.set(key(module.name), result);
     for (const decl of module.declarations) {
       if (decl.constant) continue; this.scalar(decl);
-      const variable = {...decl,owner:result,label:'global:' + module.name + ':' + decl.name}; this.slot(variable.label); result.globals.set(key(decl.name),variable);
+      const variable = {...decl,owner:result,label:'global:' + module.name + ':' + decl.name}; this.allocateStorage(variable); result.globals.set(key(decl.name),variable);
     }
     for (const proc of module.procedures.values()) {
+      this.preparingProcedure=proc;
       if (!['sub','function'].includes(proc.kind)) this.fail('Native AOT does not lower property procedures', module);
-      if (proc.kind === 'function' && !INT_TYPES.has(key(proc.returnType))) this.fail('Native functions must return a numeric scalar: ' + proc.name, module);
-      const context = {module:result,proc,label:'proc:' + module.name + ':' + proc.name,locals:new Map(),temporaries:new Map(),loops:new Map(),size:0};
-      const local = (name, type = 'Long') => { context.size += 4; const variable = {name,type,offset:-context.size}; context.locals.set(key(name),variable); return variable; };
-      proc.params.forEach((p,i) => { this.scalar(p); if (p.optional || p.paramArray) this.fail('Optional/ParamArray native parameters are not lowered',module); context.locals.set(key(p.name),{...p,offset:8 + i * 4,parameter:true}); });
+      if (proc.kind === 'function' && !INT_TYPES.has(key(proc.returnType)) && key(proc.returnType)!=='string') this.fail('Native functions must return a supported scalar: ' + proc.name, module);
+      const context = {module:result,proc,label:'proc:' + module.name + ':' + proc.name,locals:new Map(),temporaries:new Map(),loops:new Map(),size:NATIVE_ERROR_FRAME_BYTES};
+      const local = (name, type = 'Long',decl={}) => { context.size += decl.nativeBytes || 4; if(context.size>512*1024)this.fail('Native procedure workspace exceeds 512 KiB',module); const variable = {...decl,name,type,offset:-context.size}; context.locals.set(key(name),variable); return variable; };
+      proc.params.forEach((p,i) => { this.scalar({...p,parameter:true}); if (p.optional || p.paramArray) this.fail('Optional/ParamArray native parameters are not lowered',module); if(key(p.type)==='string'&&!p.byRef){const v=local(p.name,p.type,p);v.incomingOffset=8+i*4;v.ownedParameter=true;}else context.locals.set(key(p.name),{...p,offset:8+i*4,parameter:true}); });
       if (proc.kind === 'function') context.returnValue = local(proc.name,proc.returnType);
       for (const instruction of proc.code) {
         if (instruction.op === 'dim') for (const decl of instruction.decls) {
           if (decl.constant) continue; this.scalar(decl); if (context.locals.has(key(decl.name))) this.fail('Duplicate local: ' + decl.name,module);
-          if (instruction.static || proc.static) { if(decl.initial) this.fail('Native static initializers are not yet lowered',module); const variable = {...decl,label:'static:' + context.label + ':' + decl.name}; this.slot(variable.label); context.locals.set(key(decl.name),variable); }
-          else Object.assign(local(decl.name,decl.type),decl);
+          if (instruction.static || proc.static) { if(decl.initial) this.fail('Native static initializers are not yet lowered',module); const variable = {...decl,label:'static:' + context.label + ':' + decl.name}; this.allocateStorage(variable);if(variable.fixedLength)variable.initialized=this.slot(variable.label+':initialized'); context.locals.set(key(decl.name),variable); }
+          else local(decl.name,decl.type,decl);
         }
         if (instruction.op === 'forInit') { const end = local(instruction.id + ':end'), step = local(instruction.id + ':step'); context.loops.set(instruction.id,{...instruction,endVariable:end,stepVariable:step}); }
         if (instruction.op === 'temp') context.temporaries.set(instruction.id,local(instruction.id));
@@ -1736,6 +2146,11 @@ class NativeCompiler {
   }
   variable(node, context = this.context) {
     if (node.kind === 'group') return this.variable(node.expr,context);
+    if (node.kind === 'call') {
+      const array=this.variable(node.callee,context);
+      if(array?.nativeBounds){if(node.args.length!==array.nativeBounds.length)this.fail('Native array rank mismatch: '+array.name);return {type:array.type,fixedLength:array.fixedLength,elementOf:array,indices:node.args};}
+      return null;
+    }
     if (node.kind === 'id') return context?.locals.get(key(node.name)) || context?.module.globals.get(key(node.name)) || this.publicVariable(node.name);
     if (node.kind === 'member' && node.object.kind === 'id') { const owner=this.modules.get(key(node.object.name)), variable=owner?.globals.get(key(node.name)); if(variable && owner!==context?.module && variable.scope!=='public') this.fail('Private native variable is not accessible: '+node.name); return variable; }
     return null;
@@ -1746,10 +2161,20 @@ class NativeCompiler {
     for (const map of [c?.proc.constantBindings, c?.module.module.constantBindings, c?.module.module.importedConstantBindings, c?.module.module.globalEnumMembers]) if (map?.has(name)) return map.get(name);
     return CONSTANTS[name];
   }
-  address(variable) { if (!variable) this.fail('Expression is not an addressable scalar'); if(variable.owner?.form) this.x.call(variable.owner.initialize); if (variable.label) this.x.value(variable.label); else if (variable.parameter && variable.byRef) this.x.value({argument:variable.offset}); else this.x.local(variable.offset); }
-  load(variable) { this.address(variable); const type = key(variable.type); this.x.emit(...(type === 'byte' ? [0x0f,0xb6,0x00] : ['integer','boolean'].includes(type) ? [0x0f,0xbf,0x00] : [0x8b,0x00])); }
+  address(variable) { if(!variable)this.fail('Expression is not addressable'); if(variable.elementOf)this.elementAddress(variable);else this.rawStorageAddress(variable); }
+  load(variable) {
+    if(variable.nativeBounds&&!variable.elementOf)this.fail('Array requires indices: '+variable.name);
+    this.address(variable); const type=key(variable.type);
+    this.x.emit(...(type==='byte'?[0x0f,0xb6,0x00]:['integer','boolean'].includes(type)?[0x0f,0xbf,0x00]:[0x8b,0x00]));
+    if(type==='string'){this.x.push().call('native:string:copy');this.ownString();}
+  }
   check(type) { type = key(type); if (type === 'boolean') this.x.test().emit(0x0f,0x95,0xc0,0x0f,0xb6,0xc0,0xf7,0xd8); else if (type === 'integer') this.x.compare(-32768).branch('l','error:6').compare(32767).branch('g','error:6'); else if (type === 'byte') this.x.compare(255).branch('g','error:6').compare(0).branch('l','error:6'); }
-  store(variable) { this.check(variable.type); this.x.push(); this.address(variable); this.x.emit(0x5a); const type = key(variable.type); this.x.emit(...(type === 'byte' ? [0x88,0x10] : ['integer','boolean'].includes(type) ? [0x66,0x89,0x10] : [0x89,0x10])); this.x.emit(0x89,0xd0); }
+  store(variable) {
+    if(key(variable.type)==='string'){
+      if(variable.fixedLength){this.x.emit(0x89,0xc3).push(variable.fixedLength).emit(0x53).call('native:string:fixed');this.ownString();}
+      this.x.push();this.address(variable);this.x.push().call('native:string:assign');return;
+    }
+    this.check(variable.type); this.x.push(); this.address(variable); this.x.emit(0x5a); const type = key(variable.type); this.x.emit(...(type === 'byte' ? [0x88,0x10] : ['integer','boolean'].includes(type) ? [0x66,0x89,0x10] : [0x89,0x10])); this.x.emit(0x89,0xd0); }
   object(node) {
     if (node.kind === 'id') { if (key(node.name) === 'me') return this.context?.module.form ? this.context.module : null; return this.context?.module.controls.get(key(node.name)) || (this.modules.get(key(node.name))?.form ? this.modules.get(key(node.name)) : null); }
     if (node.kind === 'member' && node.object.kind === 'id') return this.modules.get(key(node.object.name))?.controls.get(key(node.name));
@@ -1759,16 +2184,24 @@ class NativeCompiler {
   handle(object) { this.ensure(object); this.x.value(mem(object.handle)); }
   type(node) {
     if (node.kind === 'group') return this.type(node.expr);
+    const errorProperty=this.errorProperty(node);if(errorProperty)return errorProperty==='number'?'long':'string';
+    const variable=this.variable(node);if(variable)return key(variable.type);
+    if(node.kind==='call'){
+      const name=node.callee.kind==='id'?key(node.callee.name).replace(/\$$/,''):'';
+      if(['cstr','left','right','mid','chrw'].includes(name))return 'string';
+      const proc=this.resolveProcedure(node.callee);if(proc?.proc?.kind==='function')return key(proc.proc.returnType);
+    }
+    if(node.kind==='id'){const proc=this.resolveProcedure(node);if(proc?.proc?.kind==='function')return key(proc.proc.returnType);}
     if (node.kind === 'id' && key(node.name)==='caption' && this.context?.module.form && !this.variable(node)) return 'string';
     if (node.kind === 'literal') return typeof node.value === 'string' ? 'string' : 'long';
     const constant = this.constant(node); if (constant !== undefined) return typeof constant === 'string' ? 'string' : 'long';
-    if (node.kind === 'binary' && node.op === '&') return 'string';
+    if (node.kind==='binary' && (node.op==='&' || node.op==='+' && this.type(node.left)==='string' && this.type(node.right)==='string')) return 'string';
     if (node.kind === 'member' && ['caption','text'].includes(key(node.name)) && this.object(node.object)) return 'string';
     if (node.kind === 'call' && node.callee.kind === 'id' && key(node.callee.name) === 'cstr') return 'string';
     return 'long';
   }
   numeric(node) { if (this.type(node) === 'string') this.fail('Use CLng/CInt explicitly to convert native text to a number'); this.expression(node); }
-  textExpression(node) { this.expression(node); if (this.type(node) !== 'string') { const buffer = this.buffer(); this.x.emit(0x89,0xc3).push(buffer).emit(0x53).call('int-to-string'); } }
+  textExpression(node) { this.expression(node); if(this.type(node)!=='string'){this.x.push().call('native:string:from-int');this.ownString();}this.stringPointer(); }
   expression(node) {
     if (!node) this.fail('Missing expression'); const x = this.x;
     if (node.kind === 'group') return this.expression(node.expr);
@@ -1776,6 +2209,7 @@ class NativeCompiler {
     if (node.kind === 'literal') { if (typeof node.value === 'string') x.value(this.string(node.value)); else if (typeof node.value === 'boolean') x.value(node.value ? -1 : 0); else if (Number.isInteger(node.value) && node.value >= -2147483648 && node.value <= 2147483647) x.value(node.value); else this.fail('Native AOT currently requires signed 32-bit integer or string-literal values'); return; }
     const constant = this.constant(node); if (constant !== undefined) return this.expression(lit(constant));
     const variable = this.variable(node); if (variable) return this.load(variable);
+    if(this.errorExpression(node))return;
     if (node.kind === 'member') return this.getProperty(this.object(node.object),key(node.name));
     if (node.kind === 'id') { if (this.context?.module.form && ['caption','hwnd','visible','enabled','windowstate','scalewidth','scaleheight'].includes(key(node.name))) return this.getProperty(this.context.module,key(node.name)); return this.call({kind:'call',callee:node,args:[]}); }
     if (node.kind === 'call') return this.call(node);
@@ -1784,15 +2218,13 @@ class NativeCompiler {
     }
     if (node.kind !== 'binary') this.fail('Unsupported native expression: ' + node.kind);
     const op = key(node.op);
-    if (op === '&') {
-      const buffer = this.buffer(); this.textExpression(node.left); x.push(); this.textExpression(node.right); x.emit(0x89,0xc3,0x5e);
-      x.push().invoke('kernel32.dll','lstrlenW').emit(0x89,0xc7,0x56).invoke('kernel32.dll','lstrlenW').emit(0x01,0xf8).compare(4095).branch('g','error:7');
-      x.emit(0x56).push(buffer).invoke('kernel32.dll','lstrcpyW'); x.emit(0x53).push(buffer).invoke('kernel32.dll','lstrcatW'); return;
+    if (op === '&' || op==='+' && this.type(node.left)==='string' && this.type(node.right)==='string') {
+      this.textExpression(node.left);x.push();this.textExpression(node.right);x.emit(0x5b).push().emit(0x53).call('native:string:concat');this.ownString();return;
     }
     if (this.type(node.left) === 'string' || this.type(node.right) === 'string') {
       if (!Object.hasOwn(BOOL_CONDITIONS,op) || this.type(node.left) !== this.type(node.right)) this.fail('Unsupported native string operation: ' + op);
       if (this.context.module.module.optionCompare !== 'binary') this.fail('Native strings currently require Option Compare Binary');
-      this.expression(node.left); x.push(); this.expression(node.right); x.emit(0x5b,0x6a,0,0x6a,0xff,0x50,0x6a,0xff,0x53).invoke('kernel32.dll','CompareStringOrdinal').compare(2); this.boolean(op); return;
+      this.expression(node.left); x.push(); this.expression(node.right); x.emit(0x5b).push().emit(0x53).call('native:string:compare').compare(0); this.boolean(op); return;
     }
     this.numeric(node.left); x.push(); this.numeric(node.right); x.emit(0x89,0xc1,0x58);
     if (op === '+') x.emit(0x01,0xc8).branch('o','error:6');
@@ -1811,7 +2243,7 @@ class NativeCompiler {
     if (['text','caption'].includes(property)) {
       if (object.model?.type === 'Timer') this.fail('Timer has no text');
       const buffer = this.buffer(); this.handle(object); x.push().invoke('user32.dll','GetWindowTextLengthW').compare(4095).branch('g','error:7');
-      x.api('user32.dll','GetWindowTextW',[mem(object.handle),buffer,4096]).value(buffer); return;
+      x.api('user32.dll','GetWindowTextW',[mem(object.handle),buffer,4096]).push(buffer).invoke('oleaut32.dll','SysAllocString').test().branch('e','error:7');this.ownString(); return;
     }
     if (property === 'enabled' || property === 'visible') { if (object.model?.type === 'Timer') { if (property !== 'enabled') this.fail('Timer has no Visible property'); x.value(mem(object.enabled)); } else { this.handle(object); x.push().invoke('user32.dll',property === 'enabled' ? 'IsWindowEnabled' : 'IsWindowVisible').emit(0xf7,0xd8); } return; }
     if (property === 'interval' && object.model?.type === 'Timer') { x.value(mem(object.interval)); return; }
@@ -1846,14 +2278,17 @@ class NativeCompiler {
     if (candidates.length > 1) this.fail('Ambiguous native procedure: ' + callee.name); return candidates[0];
   }
   call(node) {
-    const x = this.x, args = node.args, name = node.callee.kind === 'id' ? key(node.callee.name) : null;
+    const x = this.x, args = node.args, name = node.callee.kind === 'id' ? key(node.callee.name).replace(/\$$/,'') : null;
+    if(this.errorCall(node))return;
+    if(this.stringBuiltin(node,name))return;
+    if(name==='lbound'||name==='ubound'){this.arrayBoundCall(node,name==='ubound');return;}
     if (name === 'msgbox') {
       if (args.length < 1 || args.length > 3) this.fail('MsgBox expects one to three arguments');
       this.textExpression(args[0]); x.push(); this.numeric(args[1] || lit(0)); x.push(); this.textExpression(args[2] || lit(this.project.name)); x.emit(0x89,0xc2,0x59,0x5b,0x51,0x52,0x53).push(this.context.module.form ? mem(this.context.module.handle) : 0).invoke('user32.dll','MessageBoxW'); return;
     }
     if (['clng','cint','cbyte','cbool'].includes(name)) {
       if (args.length !== 1) this.fail(name + ' expects one argument');
-      if (this.type(args[0]) === 'string') { const out = this.slot(x.unique('conversion')); this.expression(args[0]); x.emit(0x89,0xc3).push(out).push(0).push(0x400).emit(0x53).invoke('oleaut32.dll','VarI4FromStr').compare(0x8002000a).branch('e','error:6').test().branch('s','error:13').value(mem(out)); } else this.numeric(args[0]);
+      if (this.type(args[0]) === 'string') { const out = this.slot(x.unique('conversion')); this.expression(args[0]);x.push().call('native:string:numeric-text'); x.emit(0x89,0xc3).push(out).push(0).push(0x400).emit(0x53).invoke('oleaut32.dll','VarI4FromStr').compare(0x8002000a).branch('e','error:6').test().branch('s','error:13').value(mem(out)); } else this.numeric(args[0]);
       this.check({clng:'Long',cint:'Integer',cbyte:'Byte',cbool:'Boolean'}[name]); return;
     }
     if (name === 'cstr') { if (args.length !== 1) this.fail('CStr expects one argument'); this.textExpression(args[0]); return; }
@@ -1888,34 +2323,36 @@ class NativeCompiler {
     if(target.module?.form && target.module!==this.context.module)x.call(target.module.initialize);
     for (let i = 0; i < args.length; i++) {
       const param = signature.params[i];
-      if (param.byRef) { if(args[i].kind==='group') this.fail('Parenthesized ByRef temporaries are not yet lowered'); const v = this.variable(args[i]); if (!v || key(v.type) !== key(param.type)) this.fail('ByRef native argument must be a scalar of the exact declared type'); this.address(v); }
-      else { this.numeric(args[i]); this.check(param.type); }
+      if (param.byRef) { if(args[i].kind==='group') this.fail('Parenthesized ByRef temporaries are not yet lowered'); const v = this.variable(args[i]); if (!v || v.nativeBounds&&!v.elementOf || key(v.type) !== key(param.type)) this.fail('ByRef native argument must be a scalar of the exact declared type');if(v.fixedLength)this.fail('Fixed-length String ByRef copy-back is not yet lowered'); this.address(v); }
+      else { if(key(param.type)==='string')this.textExpression(args[i]);else {this.numeric(args[i]);this.check(param.type);} }
       x.push();
     }
     // VB evaluates arguments left-to-right; reverse only their stack slots for stdcall.
     for (let i = 0; i < Math.floor(args.length / 2); i++) { const a = i * 4, b = (args.length - i - 1) * 4; x.emit(0x8b,0x84,0x24).imm(a).emit(0x8b,0x8c,0x24).imm(b).emit(0x89,0x8c,0x24).imm(a).emit(0x89,0x84,0x24).imm(b); }
-    if (target.proc) x.call(target.label); else { x.invoke(target.dll,target.symbol); if (['integer','boolean'].includes(key(signature.returnType))) x.emit(0x0f,0xbf,0xc0); else if (key(signature.returnType) === 'byte') x.emit(0x0f,0xb6,0xc0); }
+    if (target.proc) {x.call(target.label);this.checkNativeError();if(key(signature.returnType)==='string'&&signature.kind==='function')this.ownString();} else { x.invoke(target.dll,target.symbol); if (['integer','boolean'].includes(key(signature.returnType))) x.emit(0x0f,0xbf,0xc0); else if (key(signature.returnType) === 'byte') x.emit(0x0f,0xb6,0xc0); }
   }
   procedure(context) {
     this.context = context; const outer=this.x, body=new BinarySection('.body',0), x=this.x=new X86(body,this.image), code=context.proc.code, end=context.label+':return';
     // Lower first so temporary text buffers are stack-local, including recursive calls.
-    x.sequence=outer.sequence;
+    x.sequence=outer.sequence;context.stringTemps=[];
     for (let i = 0; i < code.length; i++) {
-      const ins = this.instruction = code[i]; x.label(context.label + ':' + i);
+      const ins = this.instruction = code[i]; x.label(context.label + ':' + i).call(context.label+':clear-strings');this.errorCheckpoint(context,i,ins);
       this.sourceMap.push({symbol:context.label + ':' + i,source:ins.source,line:ins.line,procedure:ins.procedure});
-      if (ins.op === 'dim') { for (const decl of ins.decls) if (!decl.constant && decl.initial) { this.numeric(decl.initial); this.store(context.locals.get(key(decl.name))); } }
+      if(this.errorInstruction(ins,context))continue;
+      if (ins.op === 'dim') { for (const decl of ins.decls) if (!decl.constant && decl.initial) { this.storageExpression(context.locals.get(key(decl.name)),decl.initial); this.store(context.locals.get(key(decl.name))); } }
       else if (ins.op === 'assign') {
         if (ins.objectSet) this.fail('Native object assignment is not lowered');
         const variable = this.variable(ins.target);
-        if (variable) { this.numeric(ins.expr); this.store(variable); }
+        if (variable) { this.storageExpression(variable,ins.expr); this.store(variable); }
         else if (ins.target.kind === 'member') this.setProperty(this.object(ins.target.object),key(ins.target.name),ins.expr);
         else if (ins.target.kind === 'id' && context.module.form) this.setProperty(context.module,key(ins.target.name),ins.expr);
         else this.fail('Unknown native variable: ' + (ins.target.name || ins.target.kind));
       }
+      else if(ins.op==='erase'){for(const expr of ins.exprs)this.eraseStorage(expr);}
       else if (ins.op === 'expr') this.expression(ins.expr);
       else if (ins.op === 'branch') { this.numeric(ins.test); x.test().branch('e',context.label + ':' + ins.target); }
       else if (ins.op === 'jump') x.jump(context.label + ':' + ins.target);
-      else if (ins.op === 'return') x.jump(end);
+      else if (ins.op === 'return') {if(!ins.implicit)x.call('native:error:clear');x.jump(end);}
       else if (ins.op === 'lineNumber') { /* Debug metadata remains in the map. */ }
       else if (ins.op === 'end') x.api('kernel32.dll','ExitProcess',[0]);
       else if (ins.op === 'form') {
@@ -1933,25 +2370,40 @@ class NativeCompiler {
         this.load(variable); x.push(); this.load(loop.stepVariable); x.emit(0x59,0x01,0xc8).branch('o','error:6'); this.store(variable);
         const done = x.unique(); this.forTest(loop,variable,done); x.jump(context.label + ':' + ins.target).label(done);
       }
-      else if (ins.op === 'temp') { this.numeric(ins.expr); this.store(context.temporaries.get(ins.id)); }
-      else if (ins.op === 'case') {
-        const yes = x.unique(); const variable = context.temporaries.get(ins.id); if (!variable) this.fail('Invalid native Select Case');
-        for (const item of ins.cases) {
-          if (item.kind === 'value' || item.kind === 'compare') {
-            this.load(variable); x.push(); this.numeric(item.expr); x.emit(0x89,0xc1,0x58,0x39,0xc8); const op = item.kind === 'value' ? '=' : item.op; this.boolean(op); x.test().branch('ne',yes);
-          } else if (item.kind === 'range') {
-            const next = x.unique(); this.load(variable); x.push(); this.numeric(item.low); x.emit(0x59,0x39,0xc1).branch('l',next); this.load(variable); x.push(); this.numeric(item.high); x.emit(0x59,0x39,0xc1).branch('le',yes).label(next);
-          } else this.fail('Native Case expression is not lowered');
+      else if(ins.op==='temp'){const variable=context.temporaries.get(ins.id);variable.type=this.type(ins.expr);this.storageExpression(variable,ins.expr);this.store(variable);}
+      else if(ins.op==='case'){
+        const yes=x.unique(),variable=context.temporaries.get(ins.id);if(!variable)this.fail('Invalid native Select Case');
+        const compare=(op,right)=>this.expression({kind:'binary',op,left:{kind:'id',name:variable.name},right});
+        for(const item of ins.cases){
+          if(item.kind==='value'||item.kind==='compare'){compare(item.kind==='value'?'=':item.op,item.expr);x.test().branch('ne',yes);}
+          else if(item.kind==='range'){const next=x.unique();compare('>=',item.low);x.test().branch('e',next);compare('<=',item.high);x.test().branch('ne',yes).label(next);}
+          else this.fail('Native Case expression is not lowered');
         }
-        x.jump(context.label + ':' + ins.target).label(yes);
+        x.jump(context.label+':'+ins.target).label(yes);
       }
       else this.fail('Native instruction is not yet lowered: ' + ins.op);
     }
     x.label(context.label + ':' + code.length).label(end);
-    if (context.returnValue) this.load(context.returnValue); else x.value(0);
-    x.leave(context.proc.params.length * 4); this.instruction = null;
-    this.x=outer;outer.sequence=x.sequence;outer.label(context.label).enter(context.size);
-    for(const v of context.locals.values())if(!v.parameter&&!v.label){outer.value(0);this.store(v);}
+    if(context.returnValue&&key(context.returnValue.type)==='string'){
+      this.rawStorageAddress(context.returnValue);x.emit(0x8b,0x00);x.push();this.rawStorageAddress(context.returnValue);x.emit(0xc7,0x00,0,0,0,0,0x58);
+    }else if(context.returnValue)this.load(context.returnValue);else x.value(0);
+    const cleanup=context.label+':cleanup';x.jump(cleanup);
+    x.label(context.label+':error-return').value(0);
+    x.label(cleanup).push().call(context.label+':clear-strings');
+    for(const variable of context.locals.values())if(key(variable.type)==='string'&&!variable.label&&(!variable.parameter||!variable.byRef))this.clearStringStorage(variable);
+    x.emit(0x58);this.leaveErrorFrame();x.leave(context.proc.params.length*4);
+    this.emitErrorDispatch(context);
+    x.label(context.label+':clear-strings');for(const variable of context.stringTemps)this.clearStringStorage(variable);x.emit(0xc3);
+    this.instruction=null;this.x=outer;outer.sequence=x.sequence;outer.label(context.label).enter(context.size);
+    for(const variable of [...context.locals.values(),...context.stringTemps])if(!variable.parameter&&!variable.label)this.zeroStorage(variable);
+    this.enterErrorFrame(context);
+    for(const variable of context.locals.values())if(variable.ownedParameter){
+      outer.value({argument:variable.incomingOffset}).push().call('native:string:copy').emit(0x89,0x85).imm(variable.offset);
+    }
+    for(const variable of context.locals.values()){
+      if(!variable.label)this.initializeFixedString(variable);
+      else if(variable.fixedLength){const done=outer.unique();outer.value(mem(variable.initialized)).test().branch('ne',done);this.initializeFixedString(variable);outer.value(1).store(variable.initialized).label(done);}
+    }
     const base=this.text.length;for(const [name,offset]of body.labels){if(this.text.labels.has(name))this.fail('Duplicate native label');this.text.labels.set(name,base+offset);}
     for(const fixup of body.fixups)this.text.fixups.push({...fixup,offset:base+fixup.offset});
     for(const byte of body.bytes)this.text.bytes.push(byte);
@@ -1967,7 +2419,7 @@ class NativeCompiler {
     if (proc.proc.params.length !== args.length) this.fail('Native event signature mismatch: ' + name,module);
     args.forEach((arg,i) => { const param = proc.proc.params[i]; if (arg.ref && (!param.byRef || key(param.type) !== 'integer')) this.fail('Native event requires ByRef Integer: ' + param.name,module); });
     for (const arg of [...args].reverse()) { if (arg.ref) this.x.local(arg.ref).push(); else this.x.push(arg); }
-    this.x.call(proc.label);
+    this.x.call(proc.label);this.checkNativeError('native:error:fatal');
   }
   timer(control) {
     const x = this.x, skip = x.unique(); x.api('user32.dll','KillTimer',[mem(control.module.handle),control.id]);
@@ -2046,7 +2498,7 @@ class NativeCompiler {
     // access from Form_Initialize can load that form without recursively firing Initialize.
     x.label(module.initialize).enter().value(mem(module.initialized)).test().branch('ne',initialized).value(1).store(module.initialized);
     for (const variable of module.globals.values()) {
-      this.context = {module,proc:{},locals:new Map()}; if (variable.initial) this.numeric(variable.initial); else x.value(0); this.store(variable);
+      this.context = {module,proc:{},locals:new Map()};if(key(variable.type)==='string')this.clearStringStorage(variable);else this.zeroStorage(variable);this.initializeFixedString(variable);if(variable.initial){this.storageExpression(variable,variable.initial);this.store(variable);}
     }
     this.handler(module,prefix + 'Initialize');
     x.label(initialized).value(0).leave();
@@ -2112,7 +2564,7 @@ class NativeCompiler {
   }
   windowProcedure(module,wnd,prefix) {
     const x = this.x, fallback = x.unique(), zero = x.unique(), exit = x.unique(), close = x.unique(), destroy = x.unique(), command = x.unique(), timer = x.unique(), size = x.unique(), focus = x.unique();
-    x.label(wnd).enter(8);
+    x.label(wnd).enter(12);this.enterCallbackBoundary(-12);
     x.value({argument:12}).compare(2).branch('e',destroy).compare(0x10).branch('e',close);
     x.value(mem(module.loaded)).test().branch('e',fallback);
     x.value({argument:12}).compare(0x111).branch('e',command).compare(0x113).branch('e',timer).compare(5).branch('e',size).compare(6).branch('e',focus).jump(fallback);
@@ -2151,10 +2603,11 @@ class NativeCompiler {
     x.label(fallback);
     if (module.form.type === 'MDIForm') x.api('user32.dll','DefFrameProcW',[{argument:8},mem(module.client),{argument:12},{argument:16},{argument:20}]);
     else x.api('user32.dll',module.form.properties.MDIChild ? 'DefMDIChildProcW' : 'DefWindowProcW',[{argument:8},{argument:12},{argument:16},{argument:20}]);
-    x.jump(exit).label(zero).value(0).label(exit).leave(16);
+    x.jump(exit).label(zero).value(0).label(exit);this.leaveCallbackBoundary(-12);x.leave(16);
   }
   helpers() {
     const x = this.x;
+    emitNativeStorageHelpers(this);
     // int-to-string(value, buffer), including INT_MIN without signed negation overflow.
     const positive = x.unique(), digits = x.unique(), copy = x.unique(), done = x.unique();
     x.label('int-to-string').enter(64).value({argument:8}).emit(0x89,0xc3).value({argument:12}).emit(0x89,0xc7,0x89,0xd8,0x85,0xc0).branch('ns',positive);
@@ -2162,7 +2615,7 @@ class NativeCompiler {
     x.label(positive).local(-2).emit(0x89,0xc6,0x89,0xd8,0x85,0xc0); const magnitude = x.unique(); x.branch('ns',magnitude).emit(0xf7,0xd8).label(magnitude).emit(0x31,0xdb);
     x.label(digits).emit(0x31,0xd2,0xb9).imm(10).emit(0xf7,0xf1,0x80,0xc2,48,0x66,0x89,0x16,0x83,0xee,2,0x43,0x85,0xc0).branch('ne',digits);
     x.label(copy).emit(0x83,0xc6,2,0x66,0x8b,0x06,0x66,0x89,0x07,0x83,0xc7,2,0x4b).branch('ne',copy).emit(0x66,0xc7,0x07,0,0).value({argument:12}).leave(8);
-    for (const number of [5,6,7,11,13]) { x.label('error:' + number).api('user32.dll','MessageBoxW',[0,this.string('Run-time error ' + number),this.errorTitle,16]).api('kernel32.dll','ExitProcess',[number]); }
+    emitNativeErrorHelpers(this);
   }
   build() {
     for (const module of this.modules.values()) for (const proc of module.procedures.values()) this.procedure(proc);
@@ -2174,10 +2627,11 @@ class NativeCompiler {
       x.value(mem('instance')).store(module.wc,16).api('user32.dll','LoadCursorW',[0,32512]).store(module.wc,24);
       x.api('user32.dll','RegisterClassW',[module.wc]).test().branch('e','error:7');
     }
-    for (const module of this.modules.values()) if (!module.form) { this.context = {module,proc:{},locals:new Map()}; for (const variable of module.globals.values()) if (variable.initial) { this.numeric(variable.initial); this.store(variable); } }
+    for(const module of this.modules.values())if(!module.form)for(const variable of module.globals.values())this.initializeFixedString(variable);
+    for (const module of this.modules.values()) if (!module.form) { this.context = {module,proc:{},locals:new Map()}; for (const variable of module.globals.values()) if (variable.initial) { this.storageExpression(variable,variable.initial); this.store(variable); } }
     if (key(this.project.startup) === 'sub main') {
       const candidates = [...this.modules.values()].filter(m => !m.form).map(m => m.procedures.get('main')).filter(Boolean);
-      if (candidates.length !== 1 || candidates[0].proc.params.length) this.fail('Native Sub Main startup must be unique and parameterless'); x.call(candidates[0].label);
+      if (candidates.length !== 1 || candidates[0].proc.params.length) this.fail('Native Sub Main startup must be unique and parameterless'); x.call(candidates[0].label);this.checkNativeError('native:error:fatal');
     } else {
       const startup = this.modules.get(key(this.project.startup)); if (!startup?.form) this.fail('Native startup form was not found');
       x.call(startup.create).api('user32.dll','ShowWindow',[mem(startup.handle),Number(startup.form.properties.WindowState) === 2 ? 3 : Number(startup.form.properties.WindowState) === 1 ? 6 : 5]);
@@ -2189,9 +2643,10 @@ class NativeCompiler {
     x.label(dispatch).api('user32.dll','TranslateMessage',['msg']).api('user32.dll','DispatchMessageW',['msg']).jump(loop).label(quit).api('kernel32.dll','ExitProcess',[0]);
     this.image.manifest('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"><trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"><security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false"/></requestedPrivileges></security></trustInfo><dependency><dependentAssembly><assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="x86" publicKeyToken="6595b64144ccf1df" language="*"/></dependentAssembly></dependency></assembly>');
     const linked = this.image.finish('entry');
-    return {bytes:linked.bytes,report:{target:'win32-aot',architecture:'x86',format:'PE32',extraction:false,runtime:'Win32 system DLLs; no embedded JavaScript engine or VB6 runtime',graphics:'native Windows controls / GDI, not WebGPU',size:linked.bytes.length,imports:linked.imports,sections:linked.sections,sourceMap:this.sourceMap.map(s => ({...s,rva:linked.symbols[s.symbol]})),limits:['Typed integer subset; unsupported VB constructs fail compilation.','Native controls use Windows theme/font metrics, not pixel-identical VB6 styling.','WebGPU remains a separate Electron target.']}};
+    return {bytes:linked.bytes,report:{target:'win32-aot',architecture:'x86',format:'PE32',extraction:false,runtime:'Win32 system DLLs; no embedded JavaScript engine or VB6 runtime',graphics:'native Windows controls / GDI, not WebGPU',size:linked.bytes.length,imports:linked.imports,sections:linked.sections,sourceMap:this.sourceMap.map(s => ({...s,rva:linked.symbols[s.symbol]})),limits:['Typed integer/String storage and fixed arrays; unsupported VB constructs fail compilation.','Native controls use Windows theme/font metrics, not pixel-identical VB6 styling.','WebGPU remains a separate Electron target.']}};
   }
 }
+Object.assign(NativeCompiler.prototype,nativeStorageMethods,nativeErrorMethods);
 function compileWin32(project, options = {}) {
   if (options.graphics && options.graphics !== 'gdi') throw new NativeCompileError('The freestanding Win32 target uses native controls/GDI; use the desktop target for WebGPU');
   if (options.arch && options.arch !== 'x86') throw new NativeCompileError('The freestanding compiler currently emits x86 PE32');
@@ -2203,10 +2658,10 @@ return {NativeCompileError,extractNativeDeclarations,compileWin32};
 })();
 
 /* entry.js */
-__modules[21]=(()=>{
-const {compileWin32, NativeCompileError, extractNativeDeclarations}=__modules[20];
-const {PE32Image, BinarySection, PE32_BASE}=__modules[18];
-const {X86}=__modules[19];
+__modules[25]=(()=>{
+const {compileWin32, NativeCompileError, extractNativeDeclarations}=__modules[24];
+const {PE32Image, BinarySection, PE32_BASE}=__modules[20];
+const {X86}=__modules[21];
 /** Standalone browser/worker SDK: no Node, DOM, compiler service or binary template. */
 
 
@@ -2214,5 +2669,5 @@ const {X86}=__modules[19];
 
 return {compileWin32,NativeCompileError,extractNativeDeclarations,PE32Image,BinarySection,PE32_BASE,X86};
 })();
-globalThis["VB6Native"]=__modules[21];
+globalThis["VB6Native"]=__modules[25];
 })();

@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import {win32StorageFixtures,win32ErrorFixtures} from './win32-storage-fixtures.mjs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
@@ -158,7 +159,7 @@ End Sub`;gui.modules.push(dialog);
     const p=newProject(name);p.startup='Sub Main';p.nativeTestError=error;
     p.modules=[{id:name,name:'MainModule',kind:'module',code:'Option Explicit\nPublic Sub Main()\n'+code+'\nEnd Sub'}];return p;
   });
-  return [arithmetic,gui,mdi,...faults];
+  return [arithmetic,gui,mdi,...faults,...win32StorageFixtures(),...win32ErrorFixtures()];
 }
 export async function emitWin32Fixtures(out='validation/win32') {
   await fs.mkdir(out,{recursive:true});const evidence=[];

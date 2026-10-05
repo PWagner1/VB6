@@ -50,9 +50,19 @@ ES module consumers can import `compileWin32` from `src/native/compiler.js`. The
 
 ## Implemented language contract
 
-Storage types are **Byte, Integer, Long and Boolean**. Arithmetic intermediates are checked signed 32-bit values, with narrower range checks on assignments/arguments. Integer division, remainder, bitwise operations, numeric and ordinal string comparisons, conditional branches, loops, Select Case, Sub/Function calls, recursion, scalar globals/locals/statics, and exact-type ByRef variables are lowered. Arguments are evaluated left-to-right before stdcall stack ordering. Optional/ParamArray and parenthesized ByRef temporaries are rejected.
+Storage types are **Byte, Integer, Long, Boolean and String**. Arithmetic intermediates are checked signed 32-bit values, with narrower range checks on assignments/arguments. Integer division, remainder, bitwise operations, numeric and ordinal String comparisons, branches, loops, numeric/String Select Case, Sub/Function calls, recursion, globals/locals/statics, and exact-type scalar/array-element ByRef calls are lowered. Arguments are evaluated left-to-right before stdcall stack ordering. Optional/ParamArray and parenthesized ByRef temporaries are rejected.
 
-Text values currently consist of Unicode literals, control captions/text, concatenation, `CStr`, `Len` and explicit numeric conversions. **Stored String variables, String parameters/returns, Variant, Decimal/Currency, floating-point types, arrays, records and class instances are not supported in AOT.** String temporaries live in bounded stack frames, not shared global scratch buffers; frames probe each Windows stack guard page. Text expressions are limited to 4,095 UTF-16 code units and temporary frame space to 512 KiB. Integer overflow, divide-by-zero and conversion errors have native diagnostics and nonzero exits. General VB `On Error` recovery is not lowered.
+Stored Unicode Strings use owned BSTR allocations from the Windows Automation system library. Globals, locals, statics, ByVal copies, ByRef mutation and String function return values have explicit ownership. Expressions snapshot stored values before evaluating a later operand that could mutate them. Each expression temporary is released at the next lowered instruction and procedure exit; recursive calls have independent ownership slots. Fixed-length Strings (1–65,535 UTF-16 units) pad/truncate on assignment and initialize with spaces. `Len`, `LenB`, `Left$`, `Right$`, `Mid$`, `ChrW`, `AscW`, `CStr`, explicit integer conversions and ordinal comparisons preserve explicit String lengths, including embedded NULs. Numeric conversion rejects embedded NUL rather than silently accepting a numeric prefix. `StrPtr(variable)` reads its current storage pointer without creating a copy; pointers to computed text are only valid through the current statement.
+
+Fixed arrays support up to eight dimensions, explicit constant lower/upper bounds and Option Base. The first dimension is contiguous; Byte/Integer/Boolean/Long elements use their native widths, and String elements own their BSTRs. Indexes are checked before access. `LBound`/`UBound` accept an optional checked dimension; `Erase` resets numeric elements and frees/resets String elements. Each array is limited to one MiB of backing storage and each procedure workspace to 512 KiB. The compiler probes stack pages. Dynamic arrays, ReDim, whole-array arguments/assignment, Variants, floating point, Decimal/Currency, records and class instances remain unsupported. Fixed-length String ByRef copy-back is explicitly rejected.
+
+Text allocations are bounded to 1,048,576 UTF-16 units. Native window text getters retain a separate 4,095-unit bound. These are diagnosed runtime limits, not unlimited VB6 String compatibility.
+
+### Error recovery
+
+`On Error GoTo label`, `On Error Resume Next`, `On Error GoTo 0`, `Resume`, `Resume Next`, `Resume label`, `Error number`, `Err.Raise(number)`, `Err.Clear`, `Err.Number`, `Err.Description`, `Err.Source` and `Erl` are lowered. A procedure has separate enabled/active handler state. A fault in an active handler propagates to its caller; a failed callee unwinds its owned Strings before the caller handles the failed call. Resume restores the recorded instruction, not the current handler location. Interrupted expression/argument stacks are discarded without discarding addressable locals. Handled bounds, overflow, division and conversion faults do not terminate the process.
+
+Error numbers are restricted to 1–65,535; common runtime diagnostics include 5, 6, 7, 9, 11, 13 and 20. Custom source/description/help arguments and signed COM HRESULT error numbers are rejected/not supported. Unhandled errors show a native diagnostic and exit nonzero. This is structured VB procedure recovery, not arbitrary Windows SEH or native DLL exception trapping. Windows callback boundaries are isolated: an unhandled event error terminates rather than performing an unsafe non-local jump through user32 into a suspended caller. Full classic VB6 cross-component error behavior is not certified.
 
 Public/private procedure, declaration and variable access is checked. Default form initialization is guarded separately from HWND creation: a public member can initialize a form without displaying/loading it, and self-UI access from `Form_Initialize` cannot recurse indefinitely. This is a singleton-form implementation, not full VB6 object lifetime/reference-counting semantics.
 
@@ -68,7 +78,7 @@ Implemented operations include caption/text, visibility/enabled state, focus, wi
 
 ## Native Declare ABI and safety
 
-The compiler links named/aliased/ordinal **stdcall** imports with scalar Byte/Integer/Long/Boolean parameters and returns. ByRef arguments must be addressable variables of the exact declared type. `StrPtr(text)` supplies a temporary UTF-16 pointer for synchronous Unicode APIs, for example:
+The compiler links named/aliased/ordinal **stdcall** imports with scalar Byte/Integer/Long/Boolean parameters and returns. ByRef arguments must be addressable variables of the exact declared type. `StrPtr(text)` supplies a UTF-16 pointer for synchronous Unicode APIs, for example:
 
 ```vb
 Private Declare Function SetWindowText Lib "user32" Alias "SetWindowTextW" (ByVal hwnd As Long, ByVal text As Long) As Long
@@ -80,7 +90,7 @@ End Sub
 
 Use `Long` for Win32 `BOOL` and x86 handles/pointers; VB Boolean/Integer storage is 16-bit. The developer is responsible for the imported function's exact ABI. Passing the wrong signature or retaining a temporary text pointer can crash a native process. Unrestricted native calls are not sandboxed by the browser's compilation step. Build/run only trusted source and audit imported DLLs. DLL names must be basenames; the tool does not copy, download or register third-party binaries. Declaring a non-system DLL creates an external deployment dependency.
 
-String/BSTR ABI parameters, C calling convention, structs, callbacks, dynamic library discovery, COM/IDispatch and OCX hosting are not implemented. Supporting a scalar Declare is not equivalent to full Win32 API or ActiveX compatibility.
+Native DLL String/BSTR ABI parameters, C calling convention, structs, callbacks, dynamic library discovery, COM/IDispatch and OCX hosting are not implemented. Supporting a scalar Declare is not equivalent to full Win32 API or ActiveX compatibility.
 
 ## Executable structure
 
