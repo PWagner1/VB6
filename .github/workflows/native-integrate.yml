@@ -7,6 +7,9 @@ permissions:
 concurrency:
   group: finalize-native-project-integration
   cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
 jobs:
   integrate:
     if: github.head_ref == 'feature/native-vb6-project-roundtrip' && github.event.pull_request.head.repo.full_name == github.repository
@@ -23,14 +26,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply verified source delta without replacing concurrent work
+      - name: Recover verified application sources only
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           git config user.name 'Wiesław Šoltés'
           git config user.email 'wieslawsoltes@users.noreply.github.com'
           git fetch origin main
           git merge --no-edit origin/main
+          mkdir -p /tmp/native-integration
           python - <<'PY'
           import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
           chunks=[]
@@ -44,19 +49,21 @@ jobs:
           assert {item['path'] for item in delta['files']} == allowed
           outputs=[]
           for item in delta['files']:
+              if item['path'].startswith('.github/'):
+                  continue
               path=pathlib.Path(item['path'])
+              before=path.read_bytes() if path.exists() else b''
+              if hashlib.sha256(before).hexdigest()==item['sha256']:
+                  continue
               if item.get('beforeGit'):
-                  before=path.read_bytes()
                   actual=hashlib.sha1(b'blob '+str(len(before)).encode()+b'\0'+before).hexdigest()
                   assert actual==item['beforeGit'], 'Concurrent edit: '+str(path)
               else:
                   recorded=subprocess.run(['git','show','f1b787a0ca2fa10e61283abfff6540ff2116d409:'+str(path)],capture_output=True)
                   if recorded.returncode==0:
-                      before=path.read_bytes()
                       assert before==recorded.stdout, 'Concurrent replacement: '+str(path)
                   else:
                       assert not path.exists(), 'Unexpected existing path: '+str(path)
-                      before=b''
               if 'text' in item:
                   text=item['text']
               else:
@@ -70,23 +77,26 @@ jobs:
           for path,output in outputs:
               path.parent.mkdir(parents=True,exist_ok=True)
               path.write_bytes(output)
-          print('Applied',len(outputs),'verified source files')
+          print('Applied',len(outputs),'verified application files; workflow updates are separate')
           PY
       - name: Build and test recovered implementation
         run: |
-          mkdir -p /tmp/native-integration
+          set -euo pipefail
           npm run build 2>&1 | tee /tmp/native-integration/build.log
           npm run test:project-files 2>&1 | tee /tmp/native-integration/native-tests.log
           npm test 2>&1 | tee /tmp/native-integration/all-tests.log
-      - name: Commit complete implementation and remove temporary workflows
+      - name: Commit application sources without workflow changes
         run: |
-          rm .github/workflows/native-integrate.yml .github/workflows/native-recovery.yml
-          git add src tests tools dist .github/workflows README.md package.json .gitignore
+          set -euo pipefail
+          git add src tests tools dist README.md package.json .gitignore
+          test -z "$(git diff --cached --name-only -- .github/workflows)"
           git diff --cached --check
-          git commit -m 'feat: complete native VB6 project and group open/save integration'
-          git push origin HEAD:refs/heads/feature/native-vb6-project-roundtrip
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat: complete native VB6 project and group open/save integration'
+          fi
           git rev-parse HEAD > /tmp/native-integration/commit.txt
           git bundle create /tmp/native-integration/repository.bundle HEAD refs/remotes/origin/main
+          git push origin HEAD:refs/heads/feature/native-vb6-project-roundtrip
       - run: python -m pip install playwright==1.57.0
       - run: python -m playwright install --with-deps chromium
       - name: Native project HTTP and standalone browser integration
