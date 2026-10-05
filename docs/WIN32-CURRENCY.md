@@ -56,9 +56,12 @@ not certification of every Windows locale.
 
 `VarType` and `TypeName` expose the supported statically lowered primitive/array
 representation, including Currency type 6, Currency array type 8198 and
-`"Currency()"`. They evaluate non-array arguments once. They do not implement
+`"Currency()"`. Typed Boolean values, comparison results and Boolean-only logical
+expressions report Boolean (type 11), not the width of their machine register.
+They evaluate non-array arguments once. They do not implement
 Variant containers, dynamic object introspection, or automatic getter evaluation.
-Direct numeric literals without retained frontend subtype metadata are diagnosed;
+Direct numeric literals and Boolean keywords lowered to numeric literals without
+retained frontend subtype metadata are diagnosed;
 use a typed variable or explicit conversion instead of assuming the compiler can
 reconstruct discarded literal suffix information. Integer-only intermediates
 remain the existing checked-Long native representation, not full VB6 promotion

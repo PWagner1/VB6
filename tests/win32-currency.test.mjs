@@ -87,3 +87,14 @@ test('mixed Currency comparisons retain rounding, direction and real API-oracle 
   const result=compileWin32(project);
   assert.ok(result.bytes.length>0);
 });
+
+test('native type queries classify Boolean literals and comparison results semantically',()=>{
+  const c={type:()=> 'long',nativeQueryType:nativeCurrencyMethods.nativeQueryType};
+  const bool={kind:'literal',value:true},comparison={kind:'binary',op:'<',left:{kind:'currency',value:'1'},right:{kind:'currency',value:'2'}};
+  for(const value of [bool,comparison,{kind:'group',expr:comparison},{kind:'unary',op:'not',expr:comparison},{kind:'binary',op:'and',left:bool,right:comparison}])assert.equal(c.nativeQueryType(value),'boolean');
+  assert.equal(c.nativeQueryType({kind:'binary',op:'and',left:bool,right:{kind:'literal',value:1}}),'long');
+});
+test('native Boolean type-query fixtures compile without weakening numeric-literal diagnostics',()=>{
+  compile('Dim tag As Long, name As String\ntag = VarType(CBool(True))\nname = TypeName(1@ < 2@)\ntag = VarType(Not (1@ < 2@))');
+  assert.throws(()=>compile('Dim tag As Long\ntag = VarType(1)'),/explicitly typed/);
+});

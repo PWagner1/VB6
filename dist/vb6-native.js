@@ -1991,6 +1991,16 @@ const nativeCurrencyMethods = {
   currencyUnary(name) {
     const x=this.x,out=this.currencyWorkspace();x.push();this.rawStorageAddress(out);x.emit(0x59).push().emit(0x51).call(C+name);
   },
+  nativeQueryType(node) {
+    while(node.kind==='group')node=node.expr;
+    if(node.kind==='literal'&&typeof node.value==='boolean')return 'boolean';
+    // Comparisons yield Boolean even though EAX carries their -1/0 value in a
+    // 32-bit register. Do not expose that physical register width as VarType.
+    if(node.kind==='binary'&&['=','<>','<','<=','>','>='].includes(key(node.op)))return 'boolean';
+    if(node.kind==='unary'&&key(node.op)==='not'&&this.nativeQueryType(node.expr)==='boolean')return 'boolean';
+    if(node.kind==='binary'&&['and','or','xor','eqv','imp'].includes(key(node.op))&&this.nativeQueryType(node.left)==='boolean'&&this.nativeQueryType(node.right)==='boolean')return 'boolean';
+    return this.type(node);
+  },
   currencyBuiltin(node,name) {
     const x=this.x,args=node.args;
     if(name==='ccur'){if(args.length!==1)this.fail('CCur expects one argument');this.currencyExpression(args[0]);return true;}
@@ -2001,7 +2011,7 @@ const nativeCurrencyMethods = {
       // Do not mistake the AOT's Long working representation for VB's subtype.
       if(query.kind==='literal'&&typeof query.value==='number')this.fail('Native '+name+' needs an explicitly typed value; use a typed variable or conversion');
       const variable=this.variable(query),array=variable?.nativeArray&&!variable.elementOf;
-      const type=array?key(variable.type):this.type(args[0]);
+      const type=array?key(variable.type):this.nativeQueryType(query);
       const descriptor={byte:[17,'Byte'],integer:[2,'Integer'],long:[3,'Long'],boolean:[11,'Boolean'],single:[4,'Single'],double:[5,'Double'],currency:[6,'Currency'],string:[8,'String']}[type];
       if(!descriptor)this.fail('Native '+name+' requires a supported typed value');
       if(!array)this.expression(args[0]);
