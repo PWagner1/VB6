@@ -39,6 +39,7 @@ jobs:
             desktop/
             dist/
             package.json
+            LICENSE
             README.md
             docs/
   native-browser:

@@ -1,0 +1,27 @@
+name: Refresh integrated native bundles
+on:
+  push:
+    branches: [feat/native-dynamic-arrays-integration]
+    paths: ['.github/workflows/native-array-refresh.yml']
+permissions:
+  contents: write
+jobs:
+  refresh:
+    if: github.repository == 'wieslawsoltes/VB6' && github.ref == 'refs/heads/feat/native-dynamic-arrays-integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run build
+      - run: npm test
+      - name: Commit regenerated bundles and remove one-use workflow
+        run: |
+          rm .github/workflows/native-array-refresh.yml
+          git add dist src/exporter/runtime-payload.js .github/workflows/native-array-refresh.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build: regenerate native-array bundles with current server-only MCP integration'
+          git push origin HEAD:refs/heads/feat/native-dynamic-arrays-integration
