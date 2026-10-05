@@ -67,8 +67,8 @@ for(const code of [
   'Private Declare Function F Lib "../x" () As Long'
 ])test('unsupported native Declare fails without producing a plausible executable: '+code,()=>assert.throws(()=>extractNativeDeclarations({name:'M',code})));
 for(const [name,code] of [
-  ['floating storage','Dim n As Double'],['ByVal array parameters','Private Sub F(ByVal n() As Long)\nEnd Sub'],
-  ['unsupported arithmetic','Private Sub Form_Load()\n Dim n As Long\n n = 1 / 2\nEnd Sub'],
+  ['unsupported record storage','Private Type Point\n x As Long\nEnd Type\nDim n As Point'],['ByVal array parameters','Private Sub F(ByVal n() As Long)\nEnd Sub'],
+  ['unsupported date storage','Private Sub Form_Load()\n Dim n As Date\nEnd Sub'],
 
   ['unsupported event','Private Sub Form_KeyDown(KeyCode As Integer, Shift As Integer)\nEnd Sub'],
   ['ambiguous default variant','Private Sub F(n)\nEnd Sub']
@@ -123,4 +123,11 @@ test('Frame controls retain native parent handles and forward their notification
   assert.ok(symbols.includes('SetWindowLongW'));assert.ok(symbols.includes('CallWindowProcW'));
   // The importer accepts declaration order that places children before their parents.
   const reversed=structuredClone(p);reversed.modules[0].form.controls.reverse();assert.ok(compileWin32(reversed).bytes.length);
+});
+
+test('freestanding compiler rejects modern data connections and bound fields explicitly',()=>{
+  const p=newProject('NativeData');p.dataSources={version:1,connections:[{name:'Database',provider:'sqlite'}],commands:[]};
+  assert.throws(()=>compileWin32(p),/data.*runtime/i);
+  p.dataSources.connections=[];const control=createControl('TextBox','Text1');control.properties.DataSource='Database';p.modules[0].form.controls.push(control);
+  assert.throws(()=>compileWin32(p),/Electron desktop target/);
 });
