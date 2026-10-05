@@ -12754,7 +12754,7 @@ class SourceEditor extends Signal {
       const options=[...new Set(events)].sort().map(event=>{const existing=this.procedureIndex.find(p=>lower(p.name)===lower(selected+'_'+event));return el('option',{value:existing?existing.line:'event:'+event,'data-event':event},event+(existing?'':' '));});
       this.procedures.replaceChildren(...options);this.eventObject=selected;
       // Native selects otherwise preselect their only item and never emit change.
-      this.procedures.selectedIndex=previousEvent?options.findIndex(option=>option.dataset.event===previousEvent):-1;return;
+      this.procedures.selectedIndex=previousEvent?options.findIndex(option=>option.dataset.event===previousEvent&&!option.value.startsWith('event:')):-1;return;
     }
     if(!force&&!includeObjects&&!this.selectorDirty)return;
     this.selectorDirty=false;const previous=this.procedures.value;this.procedures.replaceChildren(el('option',{value:''},'(Declarations)'),...[...this.procedureIndex].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>el('option',{value:p.line},p.name+(p.kind==='Sub'?'':` [${p.kind}]`))));this.procedures.value=previous;
