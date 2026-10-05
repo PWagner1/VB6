@@ -37,10 +37,30 @@ export class SourceEditor extends Signal {
     const next=String(value),change=hint||textChange(this.text,next),states=this.panes.map(p=>({pane:p,start:mapOffset(change,this.selectionBounds(p).start),end:mapOffset(change,this.selectionBounds(p).end)}));const indexed=updateSourceIndex(this.index,next,change);this.metrics.indexedLines+=indexed.scannedLines;this.selectorDirty ||= indexed.changedProcedures;this.text=next;this.lastValue=next;this.index=indexed.index;this.lines=this.index.lines;this.lineStarts=this.index.starts;this.procedureIndex=this.index.procedures;
     for(const state of states){if(selection&&state.pane===this.activePane)Object.assign(state,selection);this.syncPane(state.pane,state.start,state.end);}
   }
-  setDocument(module,project){const changed=this.module?.id!==module.id;this.module=module;this.project=project;this.root.style.setProperty('--editor-tab-width',String(project.settings.tabWidth||4));if(changed&&!this.appearance.fullModule)this.primary.mode='procedure';this.selectedObject='(General)';this.assignSource(module.code||'',changed?{start:0,end:0}:null);if(changed)for(const pane of this.panes){pane.input.scrollTop=pane.input.scrollLeft=0;}this.updateSelectors();this.paint();this.cursorChanged();}
+  setDocument(module,project){const changed=this.module?.id!==module.id;this.module=module;this.project=project;this.root.style.setProperty('--editor-tab-width',String(project.settings.tabWidth||4));if(changed&&!this.appearance.fullModule)this.primary.mode='procedure';if(changed){this.selectedObject='(General)';this.objectEntries=null;this.objectSignature=null;}this.assignSource(module.code||'',changed?{start:0,end:0}:null);if(changed)for(const pane of this.panes){pane.input.scrollTop=pane.input.scrollLeft=0;}this.updateSelectors();this.paint();this.cursorChanged();}
+  // Form-only edits do not replace source buffers, caret positions, or split-pane state.
+  refreshObjects(refreshEvents=true){
+    if(!this.module)return false;
+    const entries=[{id:'$general',name:'(General)',type:''}],names=new Set();
+    if(this.module.form){
+      entries.push({id:'$form',name:'Form',type:this.module.form.type});
+      for(const control of this.module.form.controls){
+        const name=lower(control.name);if(names.has(name))continue;names.add(name);
+        entries.push({id:control.id,name:control.name,type:control.type,index:control.properties.Index});
+      }
+    }
+    const signature=JSON.stringify(entries);if(signature===this.objectSignature){this.objects.value=this.selectedObject||'(General)';return false;}
+    const selected=this.selectedObject||'(General)',previous=this.objectEntries?.find(entry=>lower(entry.name)===lower(selected));
+    const current=entries.find(entry=>entry.id===previous?.id)||entries.find(entry=>lower(entry.name)===lower(selected));
+    this.selectedObject=current?.name||'(General)';this.objectEntries=entries;this.objectSignature=signature;
+    this.objects.replaceChildren(...entries.map(entry=>el('option',{value:entry.name},entry.name)));
+    this.objects.value=this.selectedObject;
+    if(refreshEvents)this.updateSelectors(false,true);
+    return true;
+  }
   updateSelectors(includeObjects=true,force=false){
     if(!this.module)return;
-    if(includeObjects){const value=this.selectedObject||'(General)';this.objects.replaceChildren(el('option',{value:'(General)'},'(General)'),...(this.module.form?[el('option',{value:'Form'},'Form'),...this.module.form.controls.map(c=>el('option',{value:c.name},c.name))]:[]));this.objects.value=value;}
+    if(includeObjects)this.refreshObjects(false);
     const selected=this.selectedObject||'(General)';
     if(selected!=='(General)'){
       const control=this.module.form?.controls.find(c=>c.name===selected),type=control?.type||'Form';
