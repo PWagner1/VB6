@@ -1,0 +1,85 @@
+name: Apply validated continuation
+on:
+  push:
+    branches: [feat/freestanding-win32-and-desktop-windows]
+    paths: [.github/workflows/apply-continuation.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Integrate exact existing PR histories
+        run: |
+          git config user.name 'VB6 integration'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git merge-base --is-ancestor 0b2f2db6e7f96983567e5dd9639f0eba21eec655 HEAD
+          git fetch origin refs/pull/1/head refs/pull/8/head
+          git merge --no-ff --no-edit 322eddbf9d096257f4d9bbce22d7d4fe4d200ccf
+          git merge --no-ff --no-edit 0ff6817d77fcb7aaee1f4ed1be6ece520bef92c3
+      - name: Verify and apply exact source delta
+        run: |
+          python - <<'PY'
+          import base64, hashlib, json, lzma, pathlib
+          root=pathlib.Path.cwd()
+          encoded=''.join((root/f'.github/continuation-{i}.b64').read_text().strip() for i in range(4))
+          raw=lzma.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(raw).hexdigest()=='b406c789eff3d404700b61467a5b160062e2b1fb9fb9acbd5a4c7568c8c4bccc'
+          delta=json.loads(raw)
+          outputs=[]
+          seen=set()
+          digest=lambda value: hashlib.sha256(value).hexdigest() if value is not None else None
+          for change in delta['changes']:
+              rel=pathlib.PurePosixPath(change['path'])
+              assert not rel.is_absolute() and '..' not in rel.parts and '.git' not in rel.parts
+              path=root.joinpath(*rel.parts)
+              assert path.resolve().is_relative_to(root) and not path.is_symlink()
+              assert str(rel) not in seen
+              seen.add(str(rel))
+              old=path.read_bytes() if path.exists() else None
+              assert digest(old)==change['before'], f'Concurrent edit: {rel}'
+              if change.get('delete'):
+                  new=None
+              else:
+                  lines=(old or b'').decode('utf-8').splitlines(keepends=True)
+                  for start,end,text in reversed(change['edits']):
+                      assert 0 <= start <= end <= len(lines)
+                      lines[start:end]=[text]
+                  new=''.join(lines).encode('utf-8')
+              assert digest(new)==change['after'], f'Delta mismatch: {rel}'
+              outputs.append((path,new))
+          for path,new in outputs:
+              if new is None: path.unlink()
+              else:
+                  path.parent.mkdir(parents=True,exist_ok=True)
+                  path.write_bytes(new)
+          print(f'Applied {len(outputs)} hash-verified source changes')
+          PY
+      - name: Build and test integrated sources
+        run: |
+          npm run build
+          npm test
+          node tools/win32-fixtures.mjs
+          git diff --check
+      - name: Commit integration without overwriting concurrent work
+        run: |
+          rm .github/continuation-*.b64 .github/workflows/apply-continuation.yml
+          git add -A
+          git commit -m 'feat(native): owned Strings, fixed arrays, structured errors and recovered project integration'
+          git push origin HEAD:refs/heads/feat/freestanding-win32-and-desktop-windows
+          git rev-parse HEAD > /tmp/integrated-commit.txt
+          git bundle create /tmp/vb6-integrated.bundle HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: integrated-source-history
+          path: |
+            /tmp/vb6-integrated.bundle
+            /tmp/integrated-commit.txt
+          retention-days: 7
