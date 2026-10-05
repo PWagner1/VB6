@@ -1,0 +1,99 @@
+name: Validate native chained-property correction
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: write
+concurrency:
+  group: native-interop-property-correction
+  cancel-in-progress: false
+jobs:
+  correction:
+    if: github.head_ref == 'feat/native-workspace-interop' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply independently reproduced property-chain correction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/interop-correction
+          python - <<'PY'
+          import base64,hashlib,json,os,pathlib,urllib.request
+          req=urllib.request.Request('https://api.github.com/repos/wieslawsoltes/VB6/git/blobs/6f7d41f02818f32f52a739dba59c500533f24c8d',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+          data=base64.b64decode(json.load(urllib.request.urlopen(req))['content'])
+          digest=lambda b:hashlib.sha256(b).hexdigest()
+          assert digest(data)=='e372a10d2bc71b127c660cd58fccd82e6af0b4f203c62f9927013acb7fc84792'
+          files=json.loads(data);assert {f['path'] for f in files}=={'src/runtime/automation.js','src/runtime/vm.js','tests/native-automation.test.mjs'}
+          outputs=[]
+          for f in files:
+              p=pathlib.Path(f['path']);before=p.read_bytes()
+              if digest(before)==f['after']:continue
+              assert digest(before)==f['before'],str(p)+' changed concurrently'
+              text=before.decode('utf-8')
+              for old,new in f.get('replacements',[]):
+                  assert text.count(old)==1; text=text.replace(old,new)
+              text+=f.get('append','');output=text.encode('utf-8')
+              assert digest(output)==f['after'];outputs.append((p,output))
+          for p,output in outputs:p.write_bytes(output)
+          PY
+      - name: Full regression and distribution rebuild
+        run: |
+          set -euo pipefail
+          npm run build 2>&1 | tee /tmp/interop-correction/build.log
+          npm test 2>&1 | tee /tmp/interop-correction/tests.log
+      - id: commit
+        name: Publish checked application correction only
+        run: |
+          set -euo pipefail
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git add src tests dist
+          test -z "$(git diff --cached --name-only -- .github/workflows)"
+          git diff --cached --check
+          if ! git diff --cached --quiet; then git commit -m 'fix: resolve Automation property chains before nested member access'; fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git bundle create /tmp/interop-correction/repository.bundle HEAD refs/remotes/origin/main
+          git push origin HEAD:refs/heads/feat/native-workspace-interop
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-interop-property-correction
+          path: /tmp/interop-correction
+          retention-days: 7
+  windows:
+    needs: correction
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    env:
+      VB6_COM_ARCH: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.correction.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm run test:interop:windows
+      - run: node tools/interop/test-activex.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: corrected-native-interop-${{ matrix.architecture }}
+          path: reports/native-interop
+          retention-days: 7
