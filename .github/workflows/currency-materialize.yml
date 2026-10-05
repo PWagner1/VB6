@@ -1,0 +1,80 @@
+name: Materialize Currency source
+on:
+  push:
+    branches: [feat/win32-currency-export]
+    paths: [.github/workflows/currency-materialize.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/win32-currency-export
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact base and materialize reviewed source deltas
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git merge-base --is-ancestor a073a87fbe4583fc54b20fcc76bf62fb75ffdc0f HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64,gzip,json,hashlib
+          root=Path.cwd()
+          compressed=base64.b64decode(''.join((root/f'.currency-transfer-{i}').read_text().strip() for i in (1,2,3)),validate=True)
+          sha=lambda b:hashlib.sha256(b).hexdigest()
+          if sha(compressed)!='a77862f32f666cd93b6710e76fabbd57414191d46b835421bc1a3ea1510afdf0':
+              raise SystemExit('Source transfer checksum mismatch')
+          data=json.loads(gzip.decompress(compressed))
+          changed={'src/native/compiler.js','src/native/storage.js','src/native/numeric.js','src/native/arrays.js','tools/browser-native-build-tests.py','docs/WIN32-AOT.md','docs/WIN32-ARRAYS.md','docs/WIN32-NUMERIC.md'}
+          new={'src/native/currency.js','tests/win32-currency.test.mjs','tools/win32-currency-fixtures.mjs','tools/test-win32-currency.ps1','docs/WIN32-CURRENCY.md'}
+          if data['schema']!=1 or data['base']!='a073a87fbe4583fc54b20fcc76bf62fb75ffdc0f' or set(data['before'])!=changed or set(data['edits'])!=changed or set(data['files'])!=new or set(data['after'])!=changed|new:
+              raise SystemExit('Unexpected source transfer shape')
+          writes={}
+          for name in changed:
+              file=root/name
+              if file.is_symlink() or sha(file.read_bytes())!=data['before'][name]:raise SystemExit('Base fingerprint mismatch: '+name)
+              text=file.read_text();previous=0
+              for start,end,value in data['edits'][name]:
+                  if not isinstance(start,int) or not isinstance(end,int) or not previous<=start<=end<=len(text):raise SystemExit('Invalid source edit')
+                  previous=end
+              for start,end,value in reversed(data['edits'][name]):text=text[:start]+value+text[end:]
+              writes[name]=text.encode()
+          for name,text in data['files'].items():
+              if (root/name).exists():raise SystemExit('New file already exists: '+name)
+              writes[name]=text.encode()
+          for name,content in writes.items():
+              if sha(content)!=data['after'][name]:raise SystemExit('After fingerprint mismatch: '+name)
+          for name,content in writes.items():
+              (root/name).parent.mkdir(parents=True,exist_ok=True);(root/name).write_bytes(content)
+          (root/'.currency-generated-digests.json').write_text(json.dumps(data['generated']))
+          print('Verified and materialized',len(writes),'readable source/docs/test files')
+          PY
+      - run: npm run build
+      - run: npm test
+      - name: Verify bundles and commit feature source without temporary payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json
+          for path,digest in json.loads(Path('.currency-generated-digests.json').read_text()).items():
+              if hashlib.sha256(Path(path).read_bytes()).hexdigest()!=digest:raise SystemExit('Generated bundle differs from locally tested source: '+path)
+          Path('.currency-generated-digests.json').unlink()
+          PY
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git rm .currency-transfer-1 .currency-transfer-2 .currency-transfer-3
+          git add src/native tests/win32-currency.test.mjs tools/win32-currency-fixtures.mjs tools/test-win32-currency.ps1 tools/browser-native-build-tests.py docs/WIN32-CURRENCY.md docs/WIN32-AOT.md docs/WIN32-ARRAYS.md docs/WIN32-NUMERIC.md dist
+          git diff --cached --check
+          git commit -m 'feat(native): exact Currency storage, arithmetic, ABI and typed arrays' -m 'Apply reviewed source deltas only after before/after SHA-256 validation. Build and run all Node regressions, verify generated IDE/SDK bundles against local output, and remove source-transfer payloads. Native Windows execution remains a separate required check.'
+          git push origin HEAD:refs/heads/feat/win32-currency-export
