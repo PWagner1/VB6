@@ -32,8 +32,8 @@ jobs:
           expected=['fbfa0c11959624b9f52a8e50a5e5c19340e1fd359d4df178d9eef23ad9e32365','23ea2a578437b990d7673da929dc74d77162f1b5a76cf5b7a86eac0e7f838ad5','caa9b7fdf76dcbc9daabc7a3ed3b268abbed13e6e72c00f136c1354ee20b7e06','726d552de09627c94d6317e6a5f7dc09dddad8d8b57aa078fec352d32619b3ae']
           chunks=[]
           for i,checksum in enumerate(expected):
-              chunk=(root/f'.github/continuation-{i}.b64').read_text().strip()
-              assert hashlib.sha256(chunk.encode()).hexdigest()==checksum, f'Chunk {i} integrity'
+              chunk=(root/f'.github/continuation-{i}.b64').read_text().strip() if i<3 else ''.join((root/f'.github/continuation-tail-{j}.b64').read_text().strip() for j in range(4))
+              assert hashlib.sha256(chunk.encode()).hexdigest()==checksum, f'Chunk {i} integrity: {len(chunk)} characters'
               chunks.append(chunk)
           raw=lzma.decompress(base64.b64decode(''.join(chunks),validate=True))
           assert hashlib.sha256(raw).hexdigest()=='b406c789eff3d404700b61467a5b160062e2b1fb9fb9acbd5a4c7568c8c4bccc'
