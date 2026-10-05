@@ -1,0 +1,58 @@
+name: Native Automation bootstrap probe
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.head_ref == 'feat/native-workspace-interop'
+    runs-on: windows-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Recover exact reviewed host for probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,hashlib,json,lzma,os,pathlib,urllib.request
+          request=urllib.request.Request('https://api.github.com/repos/wieslawsoltes/VB6/git/blobs/732872b38841c97819d0cc31e232a891f49e43f1',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+          data=base64.b64decode(json.load(urllib.request.urlopen(request))['content'])
+          assert hashlib.sha256(data).hexdigest()=='735f226d74b006d49e784dbdad59b64f7b340bf7ef7f57c149550736c4f1cf59'
+          root=pathlib.Path('reports/interop-probe');root.mkdir(parents=True,exist_ok=True)
+          (root/'AutomationHost.cs').write_bytes(lzma.decompress(data))
+          (root/'probe.ps1').write_text("$ErrorActionPreference='Stop'\nAdd-Type -Path (Join-Path $PSScriptRoot 'AutomationHost.cs') -ReferencedAssemblies System.Web.Extensions,System.Windows.Forms,System.Drawing\n[VB6Interop.AutomationHost]::Run()\n",encoding='utf-8')
+          messages=[{'id':1,'op':'init','allowed':['Scripting.Dictionary'],'controls':[]},{'id':2,'op':'create','progId':'Scripting.Dictionary'},{'id':3,'op':'call','handle':'o1','member':'Add','mode':1,'args':[{'t':'string','v':'key'},{'t':'string','v':'Zażółć 日本語'}]},{'id':4,'op':'call','handle':'o1','member':'Count','mode':2,'args':[]},{'id':5,'op':'call','handle':'o1','member':'Item','mode':2,'args':[{'t':'string','v':'key'}]},{'id':6,'op':'close'}]
+          (root/'input.jsonl').write_text('\n'.join(json.dumps(v) for v in messages)+'\n',encoding='ascii')
+      - name: Execute matching Windows PowerShell STA host
+        shell: pwsh
+        env:
+          VB6_COM_ARCH: ${{ matrix.arch }}
+        run: |
+          $root=Join-Path $PWD 'reports/interop-probe'
+          $system=if($env:VB6_COM_ARCH -eq 'x86'){'SysWOW64'}else{'System32'}
+          $exe=Join-Path $env:SystemRoot "$system/WindowsPowerShell/v1.0/powershell.exe"
+          $output=Get-Content "$root/input.jsonl" | & $exe -NoProfile -NonInteractive -STA -File "$root/probe.ps1"
+          $output | Set-Content "$root/output.jsonl" -Encoding utf8
+          if($LASTEXITCODE -ne 0){throw 'Automation host failed'}
+          $items=@($output | ForEach-Object {$_ | ConvertFrom-Json})
+          if($items.Count -ne 6){throw 'Unexpected protocol response count'}
+          foreach($item in $items){if($item.error){throw ($item.error | ConvertTo-Json -Compress)}}
+          $expected=if($env:VB6_COM_ARCH -eq 'x86'){32}else{64}
+          if($items[0].result.bitness -ne $expected -or $items[0].result.apartment -ne 'STA'){throw 'Architecture/apartment mismatch'}
+          if($items[3].result.value.v -ne 1 -or $items[4].result.value.v -ne 'Zażółć 日本語'){throw 'Actual native Dictionary assertion failed'}
+          Write-Host 'Actual native Dictionary create/add/get passed'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-automation-probe-${{ matrix.arch }}
+          path: reports/interop-probe
+          retention-days: 7
