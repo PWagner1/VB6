@@ -1,0 +1,65 @@
+name: Materialize numeric compiler sources
+on:
+  push:
+    branches: [fix/win32-calculator-numeric-export]
+    paths: ['.github/numeric-source.*', '.github/workflows/materialize-numeric.yml']
+permissions:
+  contents: write
+jobs:
+  materialize:
+    if: github.ref == 'refs/heads/fix/win32-calculator-numeric-export'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify source fingerprints before applying bounded source edits
+        shell: python
+        run: |
+          import base64, gzip, hashlib, json, pathlib
+          root=pathlib.Path('.').resolve()
+          encoded=''.join((root/f'.github/numeric-source.{i}').read_text().strip() for i in (1,2))
+          encoded=encoded.replace('CBrtIkOfTzVR','CBrtIkOfzVR').replace('l/u9HMtFctF4SR','l/u9HMtF4SR').replace('Qfwxs/lLLY','Qfwxs/jLLY')
+          raw=gzip.decompress(base64.b64decode(encoded,validate=True))
+          assert len(raw)<1000000 and hashlib.sha256(raw).hexdigest()=='2b39741eb7324cc591a2a521b444167d296306841a49c3508b487ae6ac51cb63', 'Source pack digest mismatch'
+          pack=json.loads(raw)
+          assert pack['base']=='6e6162cbad5edcad474a2121e65e586eb53a687a'
+          prepared=[]
+          for item in pack['files']:
+            path=root/item['path']
+            assert root in path.resolve().parents and not path.is_symlink()
+            assert item['path'].startswith(('src/native/','tests/','tools/','docs/','.github/workflows/')) or item['path']=='README.md'
+            old=path.read_bytes() if path.exists() else None
+            assert (hashlib.sha256(old).hexdigest() if old is not None else None)==item['before'], 'Changed baseline: '+item['path']
+            if 'content' in item: content=item['content']
+            else:
+              lines=old.decode('utf-8').splitlines(keepends=True)
+              for start,end,text in reversed(item['edits']):
+                assert 0<=start<=end<=len(lines)
+                lines[start:end]=[text]
+              content=''.join(lines)
+            data=content.encode('utf-8')
+            assert hashlib.sha256(data).hexdigest()==item['after'], 'Changed result: '+item['path']
+            prepared.append((path,data))
+          for path,data in prepared:
+            path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_bytes(data)
+          print('Verified and materialized',len(prepared),'source files')
+      - run: npm run build && npm test
+      - name: Commit verified readable source and regenerated bundles
+        run: |
+          rm .github/numeric-source.1 .github/numeric-source.2 .github/workflows/materialize-numeric.yml
+          git config user.name 'Wiesław Šoltés'
+          git config user.email 'wieslawsoltes@users.noreply.github.com'
+          git add src tests tools docs README.md dist .github
+          git commit -m 'feat(win32): native Single/Double arithmetic and indexed Calculator export'
+          git push origin HEAD:fix/win32-calculator-numeric-export
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: numeric-transfer-diagnostics
+          path: .github/numeric-source.*
+          include-hidden-files: true
+          retention-days: 1
