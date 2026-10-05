@@ -32,7 +32,7 @@ jobs:
           git fetch origin main
           git merge --no-edit origin/main
           python - <<'PY'
-          import base64, hashlib, json, lzma, os, pathlib, urllib.request
+          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
           chunks=[]
           for sha in ['f3fec04c20062020fad596e3665190fd2cae8d9d','3faf33420bed7ac6bcc88901227a9468ad1f07ee','c163155bbdf1fdf4f3a0d1a6397771a55be2e5b2']:
               request=urllib.request.Request('https://api.github.com/repos/wieslawsoltes/VB6/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
@@ -50,8 +50,13 @@ jobs:
                   actual=hashlib.sha1(b'blob '+str(len(before)).encode()+b'\0'+before).hexdigest()
                   assert actual==item['beforeGit'], 'Concurrent edit: '+str(path)
               else:
-                  assert not path.exists(), 'Unexpected existing path: '+str(path)
-                  before=b''
+                  recorded=subprocess.run(['git','show','f1b787a0ca2fa10e61283abfff6540ff2116d409:'+str(path)],capture_output=True)
+                  if recorded.returncode==0:
+                      before=path.read_bytes()
+                      assert before==recorded.stdout, 'Concurrent replacement: '+str(path)
+                  else:
+                      assert not path.exists(), 'Unexpected existing path: '+str(path)
+                      before=b''
               if 'text' in item:
                   text=item['text']
               else:
