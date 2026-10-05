@@ -15,6 +15,10 @@ def resource_tests(browser):
         payloads=[{'name':name,'mimeType':'application/octet-stream','buffer':base64.b64decode(value['base64']) if isinstance(value,dict) else value.encode()} for name,value in F['resourceFiles'].items()]
         with page.expect_file_chooser() as chooser: page.locator('[data-command="open"]').first.click()
         chooser.value.set_files(payloads)
+        # Native imports now select the entry and code page explicitly before opening.
+        page.get_by_label('Project entry',exact=True).select_option('Resources.vbp')
+        page.get_by_label('Native text encoding',exact=True).select_option('windows-1252')
+        page.locator('.ide-modal-cover').last.get_by_role('button',name='Open',exact=True).click()
         page.wait_for_function('vb6Studio.project.name === "ResourceIntegration"')
         check(page.evaluate('vb6Studio.diagnostics.length')==0)
         page.locator('.designer-pane [data-control="Image1"] img').wait_for()
