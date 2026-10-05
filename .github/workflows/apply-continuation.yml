@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Integrate exact existing PR histories
+      - name: Integrate exact existing PR histories for testing
         run: |
           git config user.name 'VB6 integration'
           git config user.email 'wieslawsoltes@users.noreply.github.com'
@@ -79,18 +79,26 @@ jobs:
           npm test
           node tools/win32-fixtures.mjs
           git diff --check
-      - name: Commit integration without overwriting concurrent work
+      - name: Publish source-only commit without overwriting concurrent work
         run: |
-          rm .github/continuation-*.b64 .github/workflows/apply-continuation.yml
+          mkdir -p /tmp/integrated-workflows
+          cp .github/workflows/compatibility-oracle.yml .github/workflows/project-compatibility.yml /tmp/integrated-workflows/
+          git restore --source="$GITHUB_SHA" --staged --worktree -- .github/workflows
+          rm .github/continuation-*.b64
           git add -A
-          git commit -m 'feat(native): owned Strings, fixed arrays, structured errors and recovered project integration'
-          git push origin HEAD:refs/heads/feat/freestanding-win32-and-desktop-windows
-          git rev-parse HEAD > /tmp/integrated-commit.txt
-          git bundle create /tmp/vb6-integrated.bundle HEAD
+          tree=$(git write-tree)
+          commit=$(git commit-tree "$tree" -p "$GITHUB_SHA" -m 'feat(native): owned Strings, fixed arrays, structured errors and recovered project integration')
+          git diff --exit-code "$GITHUB_SHA" "$commit" -- .github/workflows
+          git push origin "$commit":refs/heads/feat/freestanding-win32-and-desktop-windows
+          echo "$commit" > /tmp/integrated-commit.txt
+          git update-ref refs/heads/integrated-snapshot "$commit"
+          git bundle create /tmp/vb6-integrated.bundle --all
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: integrated-source-history
           path: |
             /tmp/vb6-integrated.bundle
             /tmp/integrated-commit.txt
+            /tmp/integrated-workflows/
           retention-days: 7
