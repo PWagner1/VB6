@@ -1,5 +1,5 @@
 import {importNativeFiles,parseNativeProject,patchNativeProject,workspaceFiles,normalizedEntries,listProjectEntries,parseVBG,workspaceProjects,selectWorkspaceProject} from './native-project.js';
-import {encodeNativeText} from './native-text.js';
+import {encodeNativeText,nativePathValue} from './native-text.js';
 import {patchNativeSource} from './native-source.js';
 import {readRES,writeRES} from './res.js';
 import {newId,createForm,newProject,normalizeProject,CONTROL_DEFAULTS,BASIC_CONTROL_TYPES,EXTENDED_CONTROL_TYPES} from './model.js';
@@ -52,7 +52,7 @@ export function parseCodeModule(text,fileName){const name=text.match(/^\s*Attrib
 }
 export function parseVBP(text){return parseNativeProject(text);}
 function modulePath(m){return m.sourcePath||m.name+(m.kind==='form'?'.frm':m.kind==='class'?'.cls':'.bas');}
-function serializeVBPBase(project){const native=project.nativeProject||{},owner=native.path||project.name+'.vbp',raw=(native.entries||[]).filter(e=>!project.resources||e.key.toLowerCase()!=='resfile32'),lines=raw.length?raw.map(e=>e.key+'='+e.value):['Type=Exe','MajorVer=0','MinorVer=2','RevisionVer=0','AutoIncrementVer=0'];for(const m of project.modules){const path=relativeProjectPath(owner,modulePath(m));{const kind=m.nativeKind||(m.kind==='form'?'Form':m.kind==='class'?'Class':'Module');lines.push(`${kind}=${['Module','Class'].includes(kind)?m.name+'; ':''}${path}`);};}if(project.resources)lines.push('ResFile32="'+relativeProjectPath(owner,project.resources.fileName)+'"');for(const r of project.references||[])lines.push(`${r.kind}=${r.value}`);lines.push(`Startup="${project.startup}"`,`Name="${project.name}"`);if(!raw.some(e=>e.key.toLowerCase()==='title'))lines.push(`Title="${project.name}"`);return lines.join('\r\n')+'\r\n';}
+function serializeVBPBase(project){const native=project.nativeProject||{},owner=native.path||project.name+'.vbp',raw=(native.entries||[]).filter(e=>!project.resources||e.key.toLowerCase()!=='resfile32'),lines=raw.length?raw.map(e=>e.key+'='+e.value):['Type=Exe','MajorVer=0','MinorVer=2','RevisionVer=0','AutoIncrementVer=0'];for(const m of project.modules){const path=nativePathValue(relativeProjectPath(owner,modulePath(m)));{const kind=m.nativeKind||(m.kind==='form'?'Form':m.kind==='class'?'Class':'Module');lines.push(`${kind}=${['Module','Class'].includes(kind)?m.name+'; ':''}${path}`);};}if(project.resources)lines.push('ResFile32="'+relativeProjectPath(owner,project.resources.fileName)+'"');for(const r of project.references||[])lines.push(`${r.kind}=${r.value}`);lines.push(`Startup="${project.startup}"`,`Name="${project.name}"`);if(!raw.some(e=>e.key.toLowerCase()==='title'))lines.push(`Title="${project.name}"`);return lines.join('\r\n')+'\r\n';}
 export function serializeVBP(project){return patchNativeProject(project,serializeVBPBase(project));}
 export function canonicalSource(m){
   if(m.kind==='form')return serializeFRM(m);
@@ -64,7 +64,7 @@ function singleSourceFiles(project,options={}){
   const owner=project.nativeProject?.path||project.name+'.vbp';
   if(project.resources)put(project.resources.fileName,writeRES(project.resources));
   put(owner,encodeNativeText(serializeVBP({...project,modules:prepared.modules}),project.nativeProject?.document,options.encoding));
-  for(const m of prepared.modules){const source=patchNativeSource(m,canonicalSource(m),parseVBValue);put(modulePath(m),encodeNativeText(source,m.nativeSource||{encoding:m.sourceEncoding||'windows-1252',bom:false},options.encoding));}
+  for(const m of prepared.modules){for(const node of m.form?[m.form,...m.form.controls,...m.form.menus]:[])for(const [key,value]of Object.entries(node.properties||{}))if(value&&typeof value==='object'&&!value.resource&&Object.keys(value).length)throw new VBError('Native export cannot encode structured property '+node.name+'.'+key+'. Save as a browser project to retain this data.',1002);const source=patchNativeSource(m,canonicalSource(m),parseVBValue);put(modulePath(m),encodeNativeText(source,m.nativeSource||{encoding:m.sourceEncoding||'windows-1252',bom:false},options.encoding));}
   return files;
 }
 export function sourceFiles(project,options={}){const files=project.nativeWorkspace?workspaceFiles(project,options,singleSourceFiles):singleSourceFiles(project,options);normalizedEntries(Object.entries(files));return files;}

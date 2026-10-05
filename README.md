@@ -131,3 +131,7 @@ npm run build:classic -- --project examples/classic/HelloRuntime.vbp --codegen n
 ```
 
 The modern portable EXE extracts its embedded runtime at launch. The classic EXE depends on the external 32-bit VB6 runtime and any project-specific OCX/COM components. Neither is advertised as a no-extraction, no-dependency implementation.
+
+## Original Visual Basic project files
+
+Open `.vbp` projects and `.vbg` groups from complete selected files, folders or ZIPs, alongside existing browser snapshots. Save native source/companion files as a ZIP or to an explicitly selected directory, or keep a `.vb6web` snapshot with native metadata. Unchanged bytes, source encodings, hidden attributes, duplicate project settings and unknown companions are retained; unsafe or unsupported native edits fail rather than silently discard data. Project-group switching keeps peer edits and detects shared-file conflicts. See [Native project files](docs/NATIVE-PROJECTS.md) for usage, filesystem safeguards, encoding choices and the distinction between file preservation and native COM/runtime compatibility.

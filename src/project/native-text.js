@@ -13,6 +13,7 @@ export function lineBody(line){return line.replace(/[\r\n]+$/,'');}
 export function lineEnding(line){return line.slice(lineBody(line).length);}
 export function preferredEOL(text){return text.match(/\r\n|\r|\n/)?.[0]||'\r\n';}
 export function unquote(value){const s=String(value).trim();return /^"(?:[^"]|"")*"$/.test(s)?s.slice(1,-1).replace(/""/g,'"'):s;}
+export function nativePathValue(value){return /[\s"';]/.test(value)?quote(value):value;}
 export function quote(value){return '"'+String(value).replace(/"/g,'""')+'"';}
 export function commentAt(value){let quoted=false;for(let i=0;i<value.length;i++){if(value[i]==='"'){if(quoted&&value[i+1]==='"'){i++;continue;}quoted=!quoted;}else if(value[i]==="'"&&!quoted)return i;}return -1;}
 export function replaceLineValue(line,value){const body=lineBody(line),match=body.match(/^(\s*[^=]+?\s*=\s*)(.*)$/);if(!match)return line;const at=commentAt(match[2]),tail=at<0?'':match[2].slice(at),space=at<0?'':match[2].slice(0,at).match(/\s*$/)[0];return match[1]+value+space+tail+lineEnding(line);}
@@ -25,7 +26,7 @@ export function decodeNativeText(input,{encoding='auto'}={}){
   if(bytes[0]===0xef&&bytes[1]===0xbb&&bytes[2]===0xbf){label='utf-8';bom=true;skip=3;}
   else if(bytes[0]===0xff&&bytes[1]===0xfe){label='utf-16le';bom=true;skip=2;}
   else if(bytes[0]===0xfe&&bytes[1]===0xff){label='utf-16be';bom=true;skip=2;}
-  else if(label==='auto'){try{new TextDecoder('utf-8',{fatal:true}).decode(bytes);label='utf-8';}catch{label='windows-1252';}}
+  else if(label==='auto'){label='windows-1252';if(bytes.some(b=>b>=128))try{new TextDecoder('utf-8',{fatal:true}).decode(bytes);label='utf-8';}catch{}}
   try{const decoder=new TextDecoder(label,{fatal:true,ignoreBOM:true});return {text:decodeNativeBytes(bytes.subarray(skip),decoder.encoding),encoding:decoder.encoding,bom,bytes:toBase64(bytes)};}
   catch(error){fail('Cannot decode native source as '+label+': '+error.message);}
 }
