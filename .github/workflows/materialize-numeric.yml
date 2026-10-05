@@ -62,11 +62,12 @@ jobs:
       - name: Commit readable source and regenerated bundles
         shell: bash
         run: |
-          rm .github/numeric-source.1 .github/numeric-source.2 .github/workflows/materialize-numeric.yml
+          rm .github/numeric-source.1 .github/numeric-source.2
+          rm .github/workflows/win32-numeric.yml
           git config user.name 'Wiesław Šoltés'
           git config user.email 'wieslawsoltes@users.noreply.github.com'
           git add -u
-          git add -f src/native/numeric.js src/native/control-arrays.js tests/win32-numeric.test.mjs tools/win32-numeric-fixtures.mjs tools/test-win32-numeric.ps1 docs/WIN32-NUMERIC.md .github/workflows/win32-numeric.yml
+          git add -f src/native/numeric.js src/native/control-arrays.js tests/win32-numeric.test.mjs tools/win32-numeric-fixtures.mjs tools/test-win32-numeric.ps1 docs/WIN32-NUMERIC.md
           git commit -m 'feat(win32): native Single/Double arithmetic and indexed Calculator export'
           git push origin HEAD:fix/win32-calculator-numeric-export
       - uses: actions/upload-artifact@v4
