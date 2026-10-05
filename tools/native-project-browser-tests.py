@@ -330,6 +330,8 @@ class NativeProjects(unittest.TestCase):
         self.start('vb6Studio.command("recoverNativeSave")');self.button('Restore Original');self.result(True)
         actual=self.js("async () => Array.from(new Uint8Array(await(await(await(await recoveryRoot.getDirectoryHandle('app')).getFileHandle('App.vbp')).getFile()).arrayBuffer()))")
         self.assertEqual(bytes(actual),FIXTURE['app/App.vbp']);self.assertTrue(self.js('vb6Studio.dirty'))
+        # A subsequent no-op dirty recalculation must not revalidate the old disk snapshot.
+        self.js('vb6Studio.markDirty()');self.assertTrue(self.js('vb6Studio.dirty'))
         self.assertTrue(self.js("async () => {try{await recoveryRoot.getDirectoryHandle('.vb6-save-journal');return false;}catch(e){return e.name==='NotFoundError';}}"))
 
     def case_vbw_document_restore_and_capture(self):

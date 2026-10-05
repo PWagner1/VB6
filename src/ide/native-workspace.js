@@ -25,6 +25,11 @@ export function installNativeWorkspace(ide){
     if(!state){await modal('Native Folder Recovery',{content:el('p',{},'There is no pending save journal in this folder.')});return false;}
     if(state.conflicts.length){await modal('Native Folder Recovery',{content:el('div',{},el('p',{},'External changes were found. No files will be overwritten. Keep the journal for manual inspection.'),el('pre',{},state.conflicts.join('\n')))});return false;}
     const action=await modal('Native Folder Recovery',{content:el('p',{},'A verified save journal covers '+state.files.length+' files. Restore the original bytes or complete the saved snapshot? Both operations recheck for external edits.'),buttons:[{label:'Restore Original',value:'rollback'},{label:'Complete Save',value:'complete'},{label:'Cancel',value:false}]});
-    if(!action)return false;const result=await recoverNativeDirectory(handle,{action});if(result.remaining.length)throw new Error('Recovery stopped at conflicting files: '+result.remaining.join(', '));ide.markDirty();ide.status(result.cleanupPending?'Recovery completed; journal cleanup still requires attention.':'Native folder recovery completed. Reopen the folder to synchronize; the current workspace remains unsaved.');return true;
+    if(!action)return false;
+    if(ide.runState!=='design')throw new Error('Stop execution before recovering a native folder');
+    // Disk recovery invalidates the saved baseline even when memory did not change.
+    // Invalidate before writes so partial/failed recovery also preserves discard protection.
+    ide.savedJSON=null;ide.markDirty();
+    const result=await recoverNativeDirectory(handle,{action});if(result.remaining.length)throw new Error('Recovery stopped at conflicting files: '+result.remaining.join(', '));ide.markDirty();ide.status(result.cleanupPending?'Recovery completed; journal cleanup still requires attention.':'Native folder recovery completed. Reopen the folder to synchronize; the current workspace remains unsaved.');return true;
   }catch(error){if(error.name!=='AbortError')await alertDialog(error.message,'Native Workspace');return false;}};
 }
