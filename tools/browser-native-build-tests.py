@@ -60,20 +60,25 @@ with sync_playwright() as pw:
         page.close()
         page = browser.new_page()
         page.add_script_tag(content=SDK)
-        actual = bytes(page.evaluate('p => Array.from(VB6Native.compileWin32(p).bytes)', PROJECT))
-        check('standalone compiler SDK works without IDE or DOM setup', actual == EXPECTED)
-        worker = page.evaluate('''async ({source,project}) => {
-          const script = source + `\nself.onmessage=e=>{try{const result=VB6Native.compileWin32(e.data);self.postMessage({ok:true,bytes:result.bytes},[result.bytes.buffer]);}catch(error){self.postMessage({ok:false,error:error.message});}};`;
-          const url=URL.createObjectURL(new Blob([script],{type:'text/javascript'}));
-          const worker=new Worker(url);
-          try { return await new Promise((resolve,reject)=>{
-            const timeout=setTimeout(()=>reject(new Error('Compiler worker timeout')),10000);
-            worker.onmessage=e=>{clearTimeout(timeout);e.data.ok?resolve(Array.from(e.data.bytes)):reject(new Error(e.data.error));};
-            worker.onerror=e=>{clearTimeout(timeout);reject(new Error(e.message));};worker.postMessage(project);
-          }); } finally { worker.terminate();URL.revokeObjectURL(url); }
-        }''', {'source': SDK, 'project': PROJECT})
-        check('worker compiler transfers an identical PE buffer without DOM', bytes(worker) == EXPECTED)
-        (OUT / 'results.json').write_text(json.dumps({'ok': True, 'checks': checks, 'browser': browser.version, 'sha256': hashlib.sha256(EXPECTED).hexdigest(), 'origin': 'inline standalone HTML / Blob worker; no hosting or native execution'}, indent=2))
+        fixture_hashes = {}
+        for fixture_name in ('AotWindows', 'AotDynamicArrays', 'AotStorage', 'AotErrors'):
+            fixture_project = json.loads((ROOT / f'validation/win32/{fixture_name}.vb6web').read_text())
+            fixture_expected = (ROOT / f'validation/win32/{fixture_name}.exe').read_bytes()
+            fixture_hashes[fixture_name] = hashlib.sha256(fixture_expected).hexdigest()
+            actual = bytes(page.evaluate('p => Array.from(VB6Native.compileWin32(p).bytes)', fixture_project))
+            check(f'{fixture_name}: standalone SDK emits identical PE bytes', actual == fixture_expected)
+            worker = page.evaluate('''async ({source,project}) => {
+              const script = source + `\nself.onmessage=e=>{try{const result=VB6Native.compileWin32(e.data);self.postMessage({ok:true,bytes:result.bytes},[result.bytes.buffer]);}catch(error){self.postMessage({ok:false,error:error.message});}};`;
+              const url=URL.createObjectURL(new Blob([script],{type:'text/javascript'}));
+              const worker=new Worker(url);
+              try { return await new Promise((resolve,reject)=>{
+                const timeout=setTimeout(()=>reject(new Error('Compiler worker timeout')),10000);
+                worker.onmessage=e=>{clearTimeout(timeout);e.data.ok?resolve(Array.from(e.data.bytes)):reject(new Error(e.data.error));};
+                worker.onerror=e=>{clearTimeout(timeout);reject(new Error(e.message));};worker.postMessage(project);
+              }); } finally { worker.terminate();URL.revokeObjectURL(url); }
+            }''', {'source': SDK, 'project': fixture_project})
+            check(f'{fixture_name}: worker transfers identical PE bytes without DOM', bytes(worker) == fixture_expected)
+        (OUT / 'results.json').write_text(json.dumps({'ok': True, 'checks': checks, 'browser': browser.version, 'sha256': hashlib.sha256(EXPECTED).hexdigest(), 'fixtureSha256': fixture_hashes, 'origin': 'inline standalone HTML / Blob worker; no hosting or native execution'}, indent=2))
     finally:
         browser.close()
 print(json.dumps({'passed': len(checks)}, indent=2))
