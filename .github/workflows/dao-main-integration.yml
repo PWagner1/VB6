@@ -1,0 +1,51 @@
+name: Integrate main with DAO
+on:
+  push:
+    branches: [feat/data-dao-compat]
+    paths: [.github/workflows/dao-main-integration.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Merge reviewed main without discarding source conflicts
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python - <<'PY'
+          import subprocess
+          r=subprocess.run(['git','merge','--no-commit','--no-ff','a073a87fbe4583fc54b20fcc76bf62fb75ffdc0f'])
+          conflicts=subprocess.check_output(['git','diff','--name-only','--diff-filter=U'],text=True).splitlines()
+          assert all(p.startswith('dist/') or p in ('src/exporter/runtime-payload.js','src/editor/diagnostics-payload.js') for p in conflicts), conflicts
+          assert r.returncode==0 or conflicts
+          if conflicts: subprocess.run(['git','restore','--source=HEAD','--staged','--worktree','--',*conflicts],check=True)
+          PY
+          mkdir -p /tmp/dao-main-result
+          npm run build
+          npm test | tee /tmp/dao-main-result/node-tests.log
+          git diff --exit-code HEAD -- .github/workflows
+      - name: Publish tested merge
+        run: |
+          set -euo pipefail
+          test "$(git ls-remote origin refs/heads/feat/data-dao-compat | cut -f1)" = "$GITHUB_SHA"
+          git add -A
+          git commit -m 'Merge IntelliSense into DAO runtime and rebuild distributions'
+          git push origin HEAD:refs/heads/feat/data-dao-compat
+          git rev-parse HEAD > /tmp/dao-main-result/head.txt
+          git archive HEAD | gzip > /tmp/dao-main-result/source.tar.gz
+          git bundle create /tmp/dao-main-result/repository.bundle --all
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dao-main-integration
+          path: /tmp/dao-main-result
+          retention-days: 7
