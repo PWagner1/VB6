@@ -113,7 +113,7 @@ class Themes(unittest.TestCase):
         self.assertEqual(self.page.locator('html').get_attribute('data-ide-theme'),'fluent-dark')
         self.record('Cancel and saved workspace restore')
     def test_system_appearance_accessibility_and_classic_restore(self):
-        for base in ['fluent','macos26','x11','x11']:
+        for base in ['fluent','macos26','x11']:
             self.direct_theme(base,followSystemTheme=True)
             self.page.emulate_media(color_scheme='dark')
             self.page.wait_for_function('t=>document.documentElement.dataset.ideTheme===t',arg=base+'-dark')
@@ -131,7 +131,7 @@ class Themes(unittest.TestCase):
         self.page.emulate_media(forced_colors='none',reduced_motion='no-preference')
         self.set_theme('contrast');self.set_theme('classic')
         self.assertEqual(self.page.locator('html').get_attribute('data-vb-theme'),'classic')
-        self.record('Four OS-scheme pairs, reduced effects, forced colors and classic restore')
+        self.record('Three OS-scheme pairs, reduced effects, forced colors and classic restore')
     def test_editor_menus_property_palettes_and_controls(self):
         self.page.evaluate('()=>{vb6Studio.openDocument(vb6Studio.activeModule.id,"code");vb6Studio.appearance.codeColors={keyword:"#b1c8fa"};}')
         for theme in THEMES:
@@ -337,6 +337,8 @@ class Themes(unittest.TestCase):
         for theme in ['macos26','macos26-dark']:
             self.direct_theme(theme)
             close=self.page.locator('.document-title [data-caption-action="close"]').first
+            # Wait for the real theme transition, not a timer-dependent intermediate color.
+            self.page.wait_for_function('''()=>getComputedStyle(document.querySelector('.document-title [data-caption-action="close"]')).backgroundColor==="rgb(255, 95, 87)"''')
             self.assertEqual(close.evaluate('e=>[e.offsetWidth,e.offsetHeight]'),[13,13])
             self.assertEqual(close.evaluate('e=>getComputedStyle(e).backgroundColor'),'rgb(255, 95, 87)')
             tool=self.page.locator('.tool-caption>button:has(>.icon[data-icon="close"])').first

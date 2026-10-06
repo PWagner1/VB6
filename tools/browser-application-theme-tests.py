@@ -50,7 +50,8 @@ class ApplicationThemes(unittest.TestCase):
  def load(self,path,page=None):
   page=page or self.page
   if MEMORY:
-   page.evaluate('()=>{globalThis.vb6Application?.dispose();delete globalThis.vb6Application;}')
+   # set_content keeps the JS realm; mimic navigation for the idempotent exporter.
+   page.evaluate('()=>{globalThis.vb6Application?.dispose();delete globalThis.vb6Application;delete globalThis.vb6ApplicationReady;delete globalThis.vb6ApplicationStatus;}')
    page.set_content(path.read_text())
   else:page.goto(self.base+str(path.relative_to(ROOT)))
  def record(self,case,**detail):self.results.append({'test':self._testMethodName,'case':case,'engine':ENGINE,'transport':'memory' if MEMORY else 'http/file',**detail})
@@ -128,7 +129,7 @@ class ApplicationThemes(unittest.TestCase):
   self.page.evaluate('nested.controller.apply({theme:"fluent"})');self.assertEqual(self.page.locator('#app').get_attribute('data-vb-theme'),'x11-dark');self.assertEqual(set(self.active_pack(nested)),{'fluent'})
   self.page.evaluate('nested.form.dispose();nested.controller.dispose();nested.node.remove()');self.record('nested Classic restores styles and icons without affecting parent')
  def test_system_preferences_and_effect_reduction(self):
-  for theme in ['fluent','macos26','x11','x11']:
+  for theme in ['fluent','macos26','x11']:
    self.theme(theme,{'followSystemTheme':True});self.page.emulate_media(color_scheme='dark');self.page.wait_for_function('t=>document.querySelector("#app").dataset.vbTheme===t',arg=theme+'-dark')
    self.assertEqual(self.page.evaluate('vb6Application.themeController.appearance.theme'),theme)
    self.page.emulate_media(color_scheme='light');self.page.wait_for_function('t=>document.querySelector("#app").dataset.vbTheme===t',arg=theme)
