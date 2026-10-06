@@ -1,51 +1,110 @@
-# Testing and validation
+# Testing VB6 Studio Web
 
-Use the exact source revision's CI results and freshly generated local output as
-validation evidence. The porting contracts and remaining work are indexed in
-[reports/README.md](../reports/README.md). Passing implemented tests does not
-establish complete native VB6 compatibility.
+Tests exercise the current checkout and its generated artifacts. Historical
+release totals, screenshots and recovery-session reports are not evidence that
+the current code passes. Use the output of a fresh run and the checks attached to
+the exact commit or pull request. The maintained porting contracts are indexed
+in [reports/README.md](../reports/README.md).
 
-## Reproduce
+## Build and Node tests
+
+Node.js 22 or newer is required. The root build does not require npm dependencies.
+Run from the repository root:
 
 ```sh
 npm run build
 npm test
-python tools/browser-tests.py
-python tools/browser-parity-tests.py
-npm run test:visual
-npm run test:features
-npm run test:recovery
-npm run test:finalization
-npm run test:boundaries
+npm run verify:ide-artifacts
 ```
 
-Node.js 22+ is required. Browser suites require Python, Playwright, Pillow and an
-installed Chromium executable. The build has no npm package dependencies. Exact
-visual comparisons (`npm run test:visual:goldens`) require the recorded
-browser/font environment. Reviewed implementation golden hashes remain in
-`tests/visual-goldens.json`; they are not Microsoft VB6 reference pixels.
+`npm test` also runs the build through its `pretest` hook. The build verifies the
+committed generated-artifact fingerprints; do not update them merely to make a
+verification failure disappear. Production source changes may require an
+intentional, reviewed artifact update.
 
-The Validate workflow runs the build, Node tests, core browser integration suites,
-separate cross-browser window/theme/export checks and Windows system contracts.
-The workflow file is authoritative for its current coverage. Other focused suites
-are listed in `package.json` and their owning compatibility documents. No fixed
-historical test count should be interpreted as the current result.
+The Node runner discovers `tests/*.test.mjs`. Suites are named for current
+subsystems rather than release or finalization milestones. The maintained test
+scope and fixture policy are documented in [tests/README.md](../tests/README.md).
+For focused validation after building:
 
-## Generated evidence
+```sh
+node --test tests/editor-*.test.mjs
+node --test tests/debugger-*.test.mjs
+node --test tests/language*.test.mjs tests/runtime-*.test.mjs
+npm run test:project-files
+npm run test:mcp
+npm run test:agents
+npm run test:data
+npm run test:layout
+npm run test:compute
+npm run test:win32-browser
+```
 
-Tests continue to write JSON, logs, screenshots, downloads and benchmarks beneath
-`reports/`. These are local or CI artifacts, not checked-in porting trackers. The
-root `.gitignore` allows only the maintained report index. New durable trackers
-need a deliberate exception; fixtures and reviewed golden inputs belong in
-`tests/`. Ignoring generated output does not prevent artifact uploads.
+A focused pass does not replace the full suite. Recovery, cancellation, atomic
+save, malformed-input and compatibility tests protect existing product features
+and belong in the maintained suite.
 
-CI uploads evidence with the run that produced it. Download it before the
-workflow's retention period expires. Old checked-in reports and the obsolete
-root `SOURCE-SHA256SUMS.txt` are available in Git history; do not use them to
-certify a different revision. Source ZIP manifests are still generated afresh by
-the packaging tools and checked by the archive verifier.
+## Browser validation
 
-## Source archive and SDK verification
+Browser suites require Python, Playwright and the selected browser; pixel tests
+also require Pillow. Use the Playwright version and installation steps selected
+in [the validation workflow](../.github/workflows/validate.yml).
+
+```sh
+python tools/browser-tests.py
+python tools/browser-parity-tests.py
+npm run test:classic-html
+npm run test:windows
+npm run test:themes:browser
+npm run test:application-themes:browser
+npm run test:sample-exports
+```
+
+Additional subsystem runners are exposed by `package.json`, including debugger,
+project-file, MCP, coding-agent, data, layout and compute browser checks. Some
+older browser runners retain historical filenames, but the useful assertions
+must exercise the current implementation, not copied predecessor code.
+
+The classic HTML runner imports the production `ToolList` directly. It checks
+retained row identity, sparse updates, bounded visible rows, keyboard navigation,
+ARIA and transfer between documents, alongside independent bevel pixels and
+layout geometry. It does not require a historical painter or a before/after
+performance benchmark.
+
+## Fixtures, evidence and platform boundaries
+
+Browser entry points and shared helpers in `tests/` are consumed by runners in
+`tools/`; they are not discovered by the Node glob. Preserve native scalar
+reference corpora, ABI fixtures and visual goldens while current tests consume
+them. Check dynamic consumers before deleting apparent orphans.
+
+Generated reports are run evidence, not executable tests. Keep local evidence out
+of source changes unless it is an intentionally reviewed compatibility fixture.
+The validation workflow is the source of truth for the CI matrix and uploads.
+
+Use Windows/native runners for native compiler, debugger, COM/OCX and Win32 ABI
+claims. A Node mock or browser fallback pass does not establish native parity.
+Likewise, pixel results depend on the browser, fonts, DPI and rendering backend;
+record those conditions rather than treating one environment as universal
+certification. Report skipped or unavailable platforms explicitly.
+
+## Report retention
+
+The root `.gitignore` keeps only `reports/README.md` in version control by
+default. Add an explicit exception only for a reviewed, durable porting tracker;
+prefer extending the owning documents linked by the index. Existing commands
+continue writing generated JSON, logs, screenshots, benchmarks, exports and
+round-trip output beneath `reports/`. Ignoring them does not disable tests or
+artifact uploads.
+
+The Validate workflow uploads core validation reports, cross-browser evidence
+and Windows system contracts with the run that produced them. Download artifacts
+before their retention period expires. Historical reports and the obsolete root
+`SOURCE-SHA256SUMS.txt` remain in Git history; do not use their old totals to
+certify a different revision. Reviewed visual input hashes remain in
+`tests/visual-goldens.json` and are not Microsoft VB6 reference pixels.
+
+## Regenerate release evidence and verify archives
 
 ```sh
 python tools/validate-release.py
@@ -54,34 +113,30 @@ python tools/verify-release.py --release-dir <release-directory> --work <new-emp
 ```
 
 The release validator runs the build, Node tests and all seven core browser
-suites, recording fresh logs and a versioned summary in
-`reports/release-validation.json`. Failed or interrupted runs do not retain a
-passing summary. Add `--check-goldens` only in the recorded visual environment.
+suites, recording fresh logs and `reports/release-validation.json`. Add
+`--check-goldens` only in the recorded browser/font environment. Failed or
+interrupted runs do not retain a passing summary. A passing default CI run is
+not a substitute for every release check; the extra visual suite must also pass.
 Launch probes (`npm run probe:launch`) remain separate from inline validation.
 
-Packaging requires a passing integrated summary and the freshly generated report
-files and previews. Missing evidence is an error with reproduction instructions,
-not a reason to reuse deleted snapshots or synthesize success. The historical
-manual `visual-review-06.json` is not required; the maintained visual audit and
-reviewed golden hashes remain the review records.
+Packaging requires a passing integrated summary, generated report files and
+previews. Missing evidence produces reproduction instructions, not a fallback to
+deleted snapshots. The historical manual `visual-review-06.json` is no longer
+required. Source archives contain the porting index and its linked package
+documentation, not disposable reports. Each source archive gets a newly generated
+`SOURCE-SHA256SUMS.txt`; removing the obsolete root copy does not disable hashing.
 
-The archive verifier extracts the actual source ZIP, validates every listed hash,
-rejects font/path violations, rebuilds generated files, compares delivered bytes,
-reruns Node and browser suites, checks the isolated SDK and verifies history and
-archive integrity. Its result is a separate validation attempt, not a substitute
-for a native VB6 differential oracle.
+The archive verifier extracts the actual source ZIP, checks its manifest and
+path/font restrictions, rebuilds generated files, compares delivered bytes,
+reruns Node/browser tests and checks the SDK, archive integrity and optional Git
+bundle. Its result is separate evidence, not native VB6 certification.
 
-## Historical evidence and verification limits
+Run report-retention and packaging regressions independently with:
 
-The earlier 0.6.0 integrated snapshot recorded 719 Node cases and 220 Chromium
-cases, including comparison of 34 implementation screenshot states. Its six
-separate launch probes were blocked with `ERR_BLOCKED_BY_ADMINISTRATOR` before
-startup; zero launch probes passed. Those observations describe that historical
-environment only. Their removed logs and screenshots remain in Git history.
+```sh
+python tools/test-report-retention.py
+python tools/test-package-notices.py
+```
 
-Own-golden screenshots are not native appearance certification. Hardware WebGPU,
-physical devices, native IME, arbitrary locale/font installations and screen
-readers require their own evidence. Automatic watches intentionally do not execute
-source code; explicit evaluation has cooperative budgets, and live editing rejects
-unsupported transformations. See [Compatibility](COMPATIBILITY.md) and the
-[visual audit](VISUAL-AUDIT.md) for detailed boundaries.
+These tests use isolated, explicitly synthetic fixtures to exercise the runner
+and actual ZIP writers. They never manufacture passing production evidence.
