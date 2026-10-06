@@ -10,3 +10,4 @@ import {OleDataObject} from './data-object.js';
 import {OleClipboard} from './clipboard.js';
 import {DROPEFFECT,MK,DropSource,DropTarget,OleDragSession} from './drag-drop.js';
 export {MemoryStream,StgMedium,ReleaseStgMedium,TYMED,DVASPECT,DATADIR,ADVF,CF,formatEtc,ClipboardFormats,OleDataObject,OleClipboard,DROPEFFECT,MK,DropSource,DropTarget,OleDragSession};
+export const ComOle=Object.freeze({HRESULT,ComError,unsignedHRESULT,signedHRESULT,FAILED,SUCCEEDED,checkHRESULT,guid,IID,ComObject,ComEnumerator,ConnectionPoint,sameComIdentity,ComClassFactory,ComClassRegistry,DisplayNameMoniker,RunningObjectTable,ROTFLAGS_REGISTRATIONKEEPSALIVE,DISPATCH,DISPID,COM_MISSING,ComByRef,DispatchObject,MemoryStream,StgMedium,ReleaseStgMedium,TYMED,DVASPECT,DATADIR,ADVF,CF,formatEtc,ClipboardFormats,OleDataObject,OleClipboard,DROPEFFECT,MK,DropSource,DropTarget,OleDragSession});

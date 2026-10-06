@@ -4,7 +4,7 @@ export const DISPATCH = Object.freeze({METHOD:1,PROPERTYGET:2,PROPERTYPUT:4,PROP
 export const DISPID = Object.freeze({VALUE:0,UNKNOWN:-1,PROPERTYPUT:-3,NEWENUM:-4});
 export const COM_MISSING = Symbol('COM missing optional argument');
 const NULL_IID='00000000-0000-0000-0000-000000000000';
-const identifier=value=>typeof value==='string'&&/^[A-Za-z][A-Za-z0-9_]{0,254}$/.test(value)&&!['constructor','prototype','caller','callee','arguments'].includes(value.toLowerCase());
+const identifier=value=>typeof value==='string'&&(/^[A-Za-z][A-Za-z0-9_]{0,254}$/.test(value)||value==='_NewEnum')&&!['constructor','prototype','caller','callee','arguments'].includes(value.toLowerCase());
 export class ComByRef { constructor(value){this.value=value;} }
 /** Wire-neutral dispatch. Language-specific VARIANT coercion belongs to the caller's adapter. */
 export class DispatchObject extends ComObject {
