@@ -36,7 +36,7 @@ export function documentSettings(value = {}) {
  * as external files. The generated runtime itself contains neither marker.
  */
 export function inlineScript(source) {
-  if (/<\/script|<!--/i.test(source)) throw exportFailure('EXPORT_UNSAFE_INLINE_SCRIPT', 'Script contains an HTML raw-text delimiter; escape the literal in source or use exportApplicationFiles', 'script');
+  if (/<\/script|<\x21--/i.test(source)) throw exportFailure('EXPORT_UNSAFE_INLINE_SCRIPT', 'Script contains an HTML raw-text delimiter; escape the literal in source or use exportApplicationFiles', 'script');
   return `<script>${source}\n</script>`;
 }
 
