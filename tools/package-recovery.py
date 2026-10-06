@@ -7,7 +7,7 @@ import argparse, hashlib, json, shutil, subprocess, zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 PREFIX='VB6-Recovered-IDE-Development'
-ALLOWED={'LICENSES','src','tools','tests','docs','examples','dist','reports','recovery'}
+ALLOWED={'LICENSES','src','tools','tests','docs','examples','dist','packages','reports','recovery'}
 ROOT_FILES={'.gitignore','LICENSE','README.md','RECOVERY.md','RELEASE-NOTES.md','THIRD-PARTY-NOTICES.md','package.json'}
 EXCLUDE={'reports/saved-project.vb6web','reports/exported-app.html','reports/features-04/runtime-export.html'}
 FONT_EXT={'.ttf','.otf','.woff','.woff2','.eot','.fon','.fnt'}

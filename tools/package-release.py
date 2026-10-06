@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 VERSION=json.loads((ROOT/'package.json').read_text())['version']
 PREFIX=f'VB6-Studio-Web-{VERSION}'
-DIRS={'LICENSES','src','tools','tests','docs','examples','dist','reports'}
+DIRS={'LICENSES','src','tools','tests','docs','examples','dist','packages','reports'}
 ROOT_FILES={'README.md','RELEASE-NOTES.md','THIRD-PARTY-NOTICES.md','LICENSE','package.json','.gitignore','RECOVERY.md'}
 EXCLUDED={'reports/saved-project.vb6web','reports/exported-app.html','reports/features-04/runtime-export.html'}
 REQUIRED_REPORTS = ('reports/README.md', 'reports/boundaries-06/browser-boundaries-06.json', 'reports/boundaries-06/explicit-evaluation.png', 'reports/boundaries-06/mdi-runtime.png', 'reports/boundaries-06/resource-editor.png', 'reports/browser-features-04.json', 'reports/browser-features-04.md', 'reports/browser-visual-tests.json', 'reports/browser-visual-tests.md', 'reports/features-04/bookmarks-split.png', 'reports/features-04/object-browser-classic.png', 'reports/features-04/project-search.png', 'reports/features-04/runtime-workbench.png', 'reports/finalization-05/browser-finalization-05.json', 'reports/finalization-05/browser-finalization-05.md', 'reports/finalization-05/large-editor-completion.png', 'reports/finalization-05/paused-data-tip.png', 'reports/finalization-05/workspace-restored.png', 'reports/release-validation.json', 'reports/screenshots/ide-designer.png', 'reports/screenshots/richtext-editor.png', 'reports/visual/classic-designer.png', 'reports/visual/contrast-code.png', 'reports/visual/split-procedure-views.png')
