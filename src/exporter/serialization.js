@@ -45,7 +45,10 @@ export function snapshotExportValue(value, path = '$') {
     }
     if (array) {
       // JSON array holes become null, including trailing holes.
-      for (let i = 0; i < input.length; i++) if (!Object.hasOwn(output, i)) output[i] = null;
+      for (let i = 0; i < input.length; i++) if (!Object.hasOwn(output, i)) {
+        if (++nodes > 1000000) throw exportFailure('EXPORT_DATA_LIMIT', 'Export data exceeds the node limit', at);
+        output[i] = null;
+      }
     }
     active.delete(input);
     return output;

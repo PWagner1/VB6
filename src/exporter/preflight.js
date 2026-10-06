@@ -29,6 +29,18 @@ function validateShape(project, options) {
     }
   }
   for (const key of ['settings', 'assets', 'vfs', 'appSettings']) require(project[key] === undefined || object(project[key]), 'Expected an object', 'project.' + key);
+  require(project.references === undefined || Array.isArray(project.references), 'Expected a reference array', 'project.references');
+  if (project.dataSources !== undefined) {
+    require(object(project.dataSources) && Array.isArray(project.dataSources.connections) && Array.isArray(project.dataSources.commands), 'Expected data-source connections and commands', 'project.dataSources');
+  }
+  for (const [i, connection] of (Array.isArray(project.dataSources?.connections) ? project.dataSources.connections : []).entries()) {
+    require(object(connection), 'Expected a data connection object', `project.dataSources.connections[${i}]`);
+  }
+  if (object(options)) {
+    for (const key of ['persist', 'nativeWindows', 'debuggerEnabled', 'breakOnEntry', 'immediateContext']) require(options[key] === undefined || typeof options[key] === 'boolean', 'Expected a boolean runtime option', 'options.' + key);
+    for (const key of ['breakpoints', 'watchpoints']) require(options[key] === undefined || Array.isArray(options[key]), 'Expected a debugger array', 'options.' + key);
+    require(options.instructionLimit === undefined || Number.isSafeInteger(options.instructionLimit) && options.instructionLimit > 0, 'Expected a positive instruction limit', 'options.instructionLimit');
+  }
   return errors;
 }
 
@@ -43,6 +55,10 @@ export function prepareApplicationExport(input, runtimeOptions, compile) {
   try {
     assertPublicConfiguration(project.dataSources);
     assertPublicConfiguration(options);
+    for (const asset of Object.values(project.assets || {})) {
+      const url = typeof asset === 'string' ? asset : asset?.url;
+      if (typeof url === 'string' && /^(https?:)?\/\//i.test(url)) assertPublicConfiguration({url});
+    }
     for (const module of project.modules) if (module.form) {
       assertPublicConfiguration(module.form.properties);
       for (const node of [...module.form.controls, ...(module.form.menus || [])]) assertPublicConfiguration(node.properties);
@@ -50,7 +66,10 @@ export function prepareApplicationExport(input, runtimeOptions, compile) {
   } catch (error) {
     throw new ApplicationExportError([exportDiagnostic('EXPORT_PRIVATE_CONFIGURATION', error.message, 'configuration', {number: error.number})]);
   }
-  const compiled = compile(project);
+  let compiled;
+  try { compiled = compile(project); }
+  catch (error) { throw new ApplicationExportError([exportDiagnostic('EXPORT_COMPILE_FAILED', error.message || 'Project compilation failed', undefined, {source: error.source, line: error.line, number: error.number})]); }
+  if (!compiled || typeof compiled.valid !== 'boolean' || compiled.diagnostics !== undefined && !Array.isArray(compiled.diagnostics)) throw new ApplicationExportError([exportDiagnostic('EXPORT_COMPILE_FAILED', 'Compiler returned an invalid result')]);
   const diagnostics = (compiled.diagnostics || []).map(d => ({code: 'EXPORT_COMPILER_DIAGNOSTIC', ...d}));
   if (!compiled.valid) {
     throw new ApplicationExportError(diagnostics.length ? diagnostics : [exportDiagnostic('EXPORT_COMPILE_FAILED', 'Project compilation failed')]);
