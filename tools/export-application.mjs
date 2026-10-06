@@ -62,7 +62,7 @@ async function main(args) {
     const deployment = exporter.exportApplicationFiles(project, options, document);
     if (settings.format === 'zip') await fs.writeFile(output, writeZip(deployment.files), {flag: 'wx'});
     else {
-      await fs.mkdir(output, {mode: 0o700});
+      await fs.mkdir(output, {mode: 0o755});
       for (const [name, data] of Object.entries(deployment.files)) await fs.writeFile(path.join(output, name), data, {flag: 'wx'});
     }
     for (const diagnostic of deployment.diagnostics) console.error(diagnostic.code + ': ' + diagnostic.message);

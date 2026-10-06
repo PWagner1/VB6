@@ -66,3 +66,6 @@ reports/win32-system/
 
 # Application-theme/icon-pack browser fixtures and evidence (CI artifacts).
 reports/application-themes/
+
+# Deployment browser fixtures and validation reports.
+reports/exporter/

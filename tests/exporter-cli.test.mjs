@@ -4,11 +4,12 @@ import {mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSy
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
 import {newProject} from '../src/project/model.js';
 import {readZip} from '../src/project/zip.js';
 import {installApplicationExport} from '../src/ide/application-export.js';
 const cli = new URL('../tools/export-application.mjs', import.meta.url);
-const run = args => spawnSync(process.execPath, [cli.pathname, ...args], {encoding: 'utf8'});
+const run = args => spawnSync(process.execPath, [fileURLToPath(cli), ...args], {encoding: 'utf8'});
 const temporary = fn => async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'vb6-export-'));
   try { const input = path.join(root, 'source.vb6web'); writeFileSync(input, JSON.stringify(newProject('CLI'))); await fn(root, input); }
