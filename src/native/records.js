@@ -56,7 +56,7 @@ export class NativeRecordLayouts {
             count*=upper-lower+1;if(!Number.isSafeInteger(count)||count*elementBytes>LIMIT)this.reject('Native record exceeds 512 KiB');bounds.push({lower,upper,stride});}
         }
         size=align(size,fieldAlignment);alignment=Math.max(alignment,fieldAlignment);
-        fields.set(key(field.name),{...field,nativeRecord:nested,recordOffset:size,inlineBounds:bounds,recordFieldArray:bounds.length>0,nativeElementBytes:elementBytes,nativeCount:count,nativeBytes:elementBytes*count});
+        fields.set(key(field.name),{...field,type:field.storageType||field.type,nativeRecord:nested,recordOffset:size,inlineBounds:bounds,recordFieldArray:bounds.length>0,nativeElementBytes:elementBytes,nativeCount:count,nativeBytes:elementBytes*count});
         size+=elementBytes*count;fileSize+=(bytes||nested.fileSize)*count;
         if(size>LIMIT)this.reject('Native record exceeds 512 KiB');
       }
@@ -124,7 +124,7 @@ export const nativeRecordMethods={
     if(!variable?.nativeRecord||variable.nativeRecord.id!==parameter.nativeRecord.id||variable.recordFieldArray)this.fail('ByRef native record argument requires the exact declared record type');
     if(!forced){this.address(variable);return {};}
     const temporary=this.arrayWorkspace(align(variable.nativeRecord.size,4),'byref-record');Object.assign(temporary,{type:parameter.type,nativeRecord:variable.nativeRecord});
-    this.recordExpression(temporary,node);this.copyRecordTo(temporary);this.rawStorageAddress(temporary);return {temporary};
+    this.address(variable);this.copyRecordTo(temporary);this.rawStorageAddress(temporary);return {temporary};
   },
   anyReferenceArgument(node) {
     const variable=this.variable(node);
