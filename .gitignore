@@ -10,6 +10,8 @@ validation/
 # Add an explicit exception only for a reviewed, durable porting tracker.
 /reports/*
 !/reports/README.md
+# Packaging regenerates the source manifest inside each release archive.
+/SOURCE-SHA256SUMS.txt
 
 # Local gateway profiles and data.
 server-profiles.local.json
