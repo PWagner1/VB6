@@ -160,3 +160,7 @@ export const x86OperandMethods={
     return this;
   }
 };
+
+// Internal shared encoding plans for the checked x87/SSE2/atomic extension.
+export const encodeX86RM=rm;
+export const emitX86Encoding=output;

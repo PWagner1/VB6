@@ -16,6 +16,7 @@ export function foldNativeInteger(node, resolve=()=>null) {
   if(!node)return null;
   if(node.kind==='group')return foldNativeInteger(node.expr,resolve);
   if(node.kind==='literal') {
+    if(node.valueType&&!['byte','integer','long','boolean'].includes(node.valueType))return null;
     const value=typeof node.value==='boolean'?(node.value?-1:0):node.value;
     return signed32(value)?{value}:null;
   }
@@ -25,7 +26,7 @@ export function foldNativeInteger(node, resolve=()=>null) {
   }
   if(node.kind==='unary') {
     // The parser represents the one asymmetric Long endpoint as unary minus.
-    if(node.op==='-'&&node.expr?.kind==='literal'&&node.expr.value===2147483648)return {value:-2147483648};
+    if(node.op==='-'&&node.expr?.kind==='literal'&&node.expr.value===2147483648&&(!node.expr.valueType||node.expr.valueType==='long'))return {value:-2147483648};
     const a=foldNativeInteger(node.expr,resolve);if(!a)return null;
     const value=node.op==='-'?-a.value:node.op==='+'?a.value:String(node.op).toLowerCase()==='not'?~a.value:null;
     return signed32(value)?{value}:null;
