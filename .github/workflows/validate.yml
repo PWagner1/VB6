@@ -94,6 +94,10 @@ jobs:
         env:
           VB6_BROWSER: ${{ matrix.browser }}
         run: npm run test:sample-exports
+      - name: Modular deployment exports, startup failures, persistence and CSP
+        env:
+          VB6_BROWSER: ${{ matrix.browser }}
+        run: npm run test:exporter:browser
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -103,6 +107,7 @@ jobs:
             reports/ide-themes
             reports/application-themes/${{ matrix.browser }}
             reports/win32-exports
+            reports/exporter
           if-no-files-found: ignore
           retention-days: 7
   win32-system-contracts:

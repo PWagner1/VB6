@@ -11,6 +11,7 @@ suite is not proof of complete native VB6 compatibility.
 |---|---|
 | Overall port | [Compatibility matrix](../docs/COMPATIBILITY.md) |
 | Language and runtime | [Compiler/runtime workstream](../docs/COMPILER-RUNTIME.md), [scalar and Variant semantics](../docs/SCALAR-COMPATIBILITY.md) |
+| Application export | [Exporter contracts, deployment formats and compatibility limits](../docs/APPLICATION-EXPORT.md) |
 | Native compiler and Windows builds | [Win32 AOT](../docs/WIN32-AOT.md), [Windows build targets](../docs/WINDOWS-BUILDS.md) |
 | Win32 browser API | [Standalone package and API boundaries](../packages/win32-browser/README.md) |
 | Compute backend | [Porting progress](../docs/compute-progress.md), [standalone compute contracts](../packages/vb6-compute/README.md) |
