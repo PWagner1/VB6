@@ -63,3 +63,7 @@ reports/ide-themes/
 /packages/win32-browser/dist/win32-browser.js
 reports/win32-exports/
 reports/win32-system/
+
+# Source-derived native compiler SDK; exact fingerprint checked on every build.
+/dist/vb6-native.js
+reports/native-optimizer/

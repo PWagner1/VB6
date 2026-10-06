@@ -30,6 +30,8 @@ jobs:
           python-version: '3.12'
       - run: npm run build
       - run: npm test
+      - name: Verify checked IA-32 encodings against GNU assembler
+        run: node tools/verify-x86-encodings.mjs
       - run: python -m pip install playwright==1.57.0
       - run: python -m playwright install --with-deps chromium
       - name: Resolve browser executable
@@ -107,4 +109,23 @@ jobs:
         with:
           name: win32-system-contracts
           path: reports/win32-system
+          retention-days: 7
+  native-compiler:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build self-checking native executables at every optimization level
+        run: node tools/win32-optimizer-fixtures.mjs
+      - name: Execute freestanding x86 optimizer, records, Win32 calls and assembler tests
+        shell: pwsh
+        run: ./tools/test-win32-optimizer.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-optimizer-execution
+          path: reports/native-optimizer
           retention-days: 7

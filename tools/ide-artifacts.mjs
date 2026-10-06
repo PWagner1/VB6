@@ -12,7 +12,7 @@ if (sampleIds.some(id => typeof id !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/
     new Set(sampleIds).size !== sampleIds.length) throw new Error('Invalid generated sample inventory');
 export const WIN32_ARTIFACTS = Object.freeze(['dist/win32-browser.js','packages/win32-browser/dist/win32-browser.js']);
 export const GENERATED_ARTIFACTS = Object.freeze([
-  ...IDE_ARTIFACTS, ...WIN32_ARTIFACTS, 'dist/vb6-runtime.js', 'src/exporter/runtime-payload.js',
+  ...IDE_ARTIFACTS, ...WIN32_ARTIFACTS, 'dist/vb6-native.js', 'dist/vb6-runtime.js', 'src/exporter/runtime-payload.js',
   'dist/OCX-Source-Control-Lab.html',
   ...sampleIds.map(id => `dist/examples/${id}.html`)
 ]);
