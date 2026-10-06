@@ -54,7 +54,11 @@
     "bench:layout": "node tools/bench-layout.mjs",
     "pack:layout": "node tools/pack-layout.mjs",
     "test:chatgpt": "node --test tests/chatgpt-auth.test.mjs tests/chatgpt-relay.test.mjs",
-    "test:chatgpt:browser": "python tools/chatgpt-browser-tests.py"
+    "test:chatgpt:browser": "python tools/chatgpt-browser-tests.py",
+    "build:compute": "node tools/build-compute.mjs",
+    "compile:compute": "node tools/compile-compute.mjs",
+    "test:compute": "node --test tests/compute*.test.mjs",
+    "test:compute:browser": "node tools/build-compute.mjs && python tools/compute-browser-tests.py"
   },
   "engines": {
     "node": ">=22"
