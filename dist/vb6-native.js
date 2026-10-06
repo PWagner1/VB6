@@ -62,7 +62,7 @@ const PLATFORM_THEMES = freeze({
   },{...darkTokens,font:'-apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif',radius:'6px',windowRadius:'12px',
     focus:'#8bc2ff',surface:'#303036',hover:'#41434e',pressed:'#4c5263',material:'color-mix(in srgb, #2b2b30 94%, transparent)',
     controlShadow:'0 1px 2px #00000066, inset 0 1px #ffffff12'}),
-  x11:profile('x11','X11 Motif — Light','x11','light',{
+  x11:profile('x11','X11 — Light','x11','light',{
     ...light,face:'#bdbdb3',light:'#f2f2e8',highlight:'#d6d6cc',shadow:'#66665c',dark:'#35352d',
     title:'#526872',titleEnd:'#526872',titleText:'#ffffff',inactive:'#a5a59a',inactiveEnd:'#a5a59a',inactiveText:'#292922',
     window:'#fffff4',selection:'#365762',selectionText:'#ffffff',workspace:'#777970',desktop:'#526872',
@@ -71,38 +71,29 @@ const PLATFORM_THEMES = freeze({
     border:'#66665c',separator:'#929287',control:'#bdbdb3',surface:'#bdbdb3',hover:'#cecec4',pressed:'#a6a69c',
     focus:'#233b83',gutter:'#e7e7db',gutterText:'#44443d',thumb:'#bdbdb3',material:'#bdbdb3',shadow:'3px 3px 0 #00000066',
     controlShadow:'inset 1px 1px #f2f2e8, inset -1px -1px #66665c',pressedShadow:'inset 1px 1px #66665c, inset -1px -1px #f2f2e8'}),
-  'x11-dark':profile('x11-dark','X11 Motif — Dark','x11','dark',{
+  'x11-dark':profile('x11-dark','X11 — Dark','x11','dark',{
     ...dark,face:'#343c3e',light:'#858f90',highlight:'#576265',shadow:'#99a4a6',dark:'#b5bfc0',
     title:'#385861',titleEnd:'#385861',titleText:'#ffffff',inactive:'#343c3e',inactiveEnd:'#343c3e',
     window:'#202729',windowText:'#f4f4e9',selection:'#b6d5dd',selectionText:'#192528',workspace:'#1c2527',desktop:'#273f47'
   },{...darkTokens,font:'"Liberation Sans", "DejaVu Sans", Arial, sans-serif',size:'11px',radius:'0px',windowRadius:'0px',
     border:'#99a4a6',separator:'#5a686b',control:'#343c3e',surface:'#343c3e',hover:'#48575c',pressed:'#263033',
     focus:'#b6d5dd',gutter:'#2d3537',gutterText:'#bcc4c4',thumb:'#75878c',material:'#343c3e',shadow:'3px 3px 0 #00000099',
-    controlShadow:'inset 1px 1px #858f90, inset -1px -1px #151d20',pressedShadow:'inset 1px 1px #151d20, inset -1px -1px #858f90'}),
-  'x11-cde':profile('x11-cde','X11 CDE — Light','x11','light',{
-    ...light,face:'#aebfbe',light:'#e4eeee',highlight:'#ccdad8',shadow:'#546d6c',dark:'#2b4141',
-    title:'#365d66',titleEnd:'#365d66',titleText:'#ffffff',inactive:'#8caaa9',inactiveEnd:'#8caaa9',inactiveText:'#1d3332',
-    window:'#f8faef',selection:'#365d66',workspace:'#617d7d',desktop:'#45757b',gray:'#425757',info:'#fffbdc'
-  },{...lightTokens,font:'"Liberation Sans", "DejaVu Sans", Arial, sans-serif',size:'11px',radius:'0px',windowRadius:'0px',
-    border:'#546d6c',separator:'#7e9996',control:'#aebfbe',surface:'#aebfbe',hover:'#c7d5d2',pressed:'#94adaa',
-    focus:'#224b6a',gutter:'#dde7df',gutterText:'#405453',thumb:'#aebfbe',material:'#aebfbe',shadow:'3px 3px 0 #00000066',
-    controlShadow:'inset 1px 1px #e4eeee, inset -1px -1px #546d6c',pressedShadow:'inset 1px 1px #546d6c, inset -1px -1px #e4eeee'}),
-  'x11-cde-dark':profile('x11-cde-dark','X11 CDE — Dark','x11','dark',{
-    ...dark,face:'#2e4547',light:'#79989b',highlight:'#446367',shadow:'#91aeb0',dark:'#c2d4d5',
-    title:'#365d66',titleEnd:'#365d66',titleText:'#ffffff',inactive:'#2e4547',inactiveEnd:'#2e4547',
-    window:'#1b2b2d',selection:'#b6d9d7',selectionText:'#172b2a',workspace:'#172527',desktop:'#20474b'
-  },{...darkTokens,font:'"Liberation Sans", "DejaVu Sans", Arial, sans-serif',size:'11px',radius:'0px',windowRadius:'0px',
-    border:'#91aeb0',separator:'#527476',control:'#2e4547',surface:'#2e4547',hover:'#3e6164',pressed:'#253b3d',
-    focus:'#b6d9d7',gutter:'#273d3f',gutterText:'#bfd1d0',thumb:'#79989b',material:'#2e4547',shadow:'3px 3px 0 #00000099',
-    controlShadow:'inset 1px 1px #79989b, inset -1px -1px #152b2d',pressedShadow:'inset 1px 1px #152b2d, inset -1px -1px #79989b'})
+    controlShadow:'inset 1px 1px #858f90, inset -1px -1px #151d20',pressedShadow:'inset 1px 1px #151d20, inset -1px -1px #858f90'})
 });
 
-return {PLATFORM_THEMES};
+/** Migrate stored choices without exposing duplicate Linux themes. Never coerce input. */
+const LEGACY_PLATFORM_THEME_IDS = Object.freeze({'x11-cde':'x11','x11-cde-dark':'x11-dark'});
+function canonicalPlatformThemeId(value) {
+  return typeof value==='string' && Object.hasOwn(LEGACY_PLATFORM_THEME_IDS,value)
+    ? LEGACY_PLATFORM_THEME_IDS[value] : value;
+}
+
+return {PLATFORM_THEMES,LEGACY_PLATFORM_THEME_IDS,canonicalPlatformThemeId};
 })();
 
 /* ..\theme\theme.js */
 __modules[1]=(()=>{
-const {PLATFORM_THEMES}=__modules[0];
+const {PLATFORM_THEMES,canonicalPlatformThemeId}=__modules[0];
 
 /** Theme data is shared by DOM controls, canvas/WebGPU drawing and the exporter.
  * Values are RGB, not OLE BGR. No proprietary font or artwork is embedded.
@@ -125,7 +116,7 @@ const THEMES = Object.freeze({...CLASSIC_THEMES,...PLATFORM_THEMES});
 // Win32 GetSysColor indices. Reserved index 25 falls back to the button face.
 const SYSTEM_ROLES = Object.freeze(['face','desktop','title','inactive','face','window','dark','text','windowText','titleText','face','face','workspace','selection','selectionText','face','shadow','gray','text','inactiveText','light','dark','highlight','infoText','info','face','link','titleEnd','inactiveEnd','selection','face']);
 const SYSTEM_COLOR_NAMES = Object.freeze(['Scroll Bars','Desktop','Active Title Bar','Inactive Title Bar','Menu Bar','Window Background','Window Frame','Menu Text','Window Text','Title Bar Text','Active Border','Inactive Border','Application Workspace','Highlight','Highlight Text','Button Face','Button Shadow','Gray Text','Button Text','Inactive Caption Text','3D Highlight','3D Dark Shadow','3D Light','Info Text','Info Background']);
-function themeId(id) { return typeof id==='string' && Object.hasOwn(THEMES,id) ? id : 'classic'; }
+function themeId(id) { id=canonicalPlatformThemeId(id);return typeof id==='string' && Object.hasOwn(THEMES,id) ? id : 'classic'; }
 function getTheme(element) {
   return THEMES[themeId(typeof element === 'string' ? element : element?.closest?.('[data-vb-theme]')?.dataset.vbTheme || element?.ownerDocument?.documentElement?.dataset.vbTheme)];
 }
