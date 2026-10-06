@@ -1,0 +1,72 @@
+# Temporary, branch-scoped transport for locally authored and tested commits.
+# Removed before merge. It never refreshes expected build fingerprints in CI.
+name: Theme refinement authoring
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - '.github/workflows/theme-refinement-authoring.yml'
+      - '.github/theme-refinement-payload/**'
+permissions:
+  contents: write
+concurrency:
+  group: theme-refinement-authoring
+  cancel-in-progress: false
+jobs:
+  publish-reviewed-commits:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'refine/platform-theme-fidelity'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply exact reviewed source commits and verify reproducible output
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          python - <<'PY'
+          import hashlib, json, lzma, os, pathlib, subprocess, tempfile
+          workflow='.github/workflows/theme-refinement-authoring.yml'
+          parts=[f'.github/theme-refinement-payload/{i}.xzpart' for i in range(3)]
+          raw=lzma.decompress(b''.join(pathlib.Path(p).read_bytes() for p in parts))
+          assert hashlib.sha256(raw).hexdigest()=='05adaf4b8e4e213037c264f160b827a87ab2e93787113e8681a148f5b9bbef84', 'Payload integrity'
+          data=json.loads(raw)
+          def run(*args, **kwargs):
+              return subprocess.run(args, check=True, **kwargs)
+          def source_tree():
+              fd,path=tempfile.mkstemp();os.close(fd);os.unlink(path)
+              env={**os.environ,'GIT_INDEX_FILE':path}
+              try:
+                  run('git','read-tree','HEAD',env=env)
+                  run('git','update-index','--force-remove',workflow,*parts,env=env)
+                  return subprocess.check_output(['git','write-tree'],env=env,text=True).strip()
+              finally:
+                  pathlib.Path(path).unlink(missing_ok=True)
+          assert source_tree()==data['base_tree'], 'Refuse applying onto a different source tree'
+          for entry in data['commits']:
+              run('git','apply','--unidiff-zero','--index','--whitespace=error-all','-',input=entry['patch'],text=True)
+              run('git','commit','-m',entry['message'])
+          run('git','apply','--unidiff-zero','--index','--whitespace=error-all','-',input=data['manifest'],text=True)
+          # The manifest was reviewed locally. Build only verifies it here.
+          run('npm','run','build')
+          run('git','add','--','dist/studio.css','dist/vb6-controls.css','dist/vb6-native.js','src/theme/application-palettes.css','src/theme/ide-palettes.css','src/theme/palette.css','tools/ide-artifacts.json')
+          run('git','rm','--',*parts)
+          run('git','commit','-m','build(theme): regenerate standalone styles and reviewed artifact fingerprints')
+          assert source_tree()==data['target_tree'], 'Published source differs from locally tested tree'
+          PY
+      - name: Test the complete source before publishing
+        run: |
+          npm test
+          git diff --exit-code
+      - name: Publish only to the requested feature branch
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          test "$(git ls-remote origin refs/heads/refine/platform-theme-fidelity | cut -f1)" = "$EXPECTED_HEAD"
+          git push origin HEAD:refs/heads/refine/platform-theme-fidelity
+          git log -4 --format='%h %s' >> "$GITHUB_STEP_SUMMARY"
