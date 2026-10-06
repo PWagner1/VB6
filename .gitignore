@@ -33,3 +33,7 @@ server-profiles.local.json
 # Generated, fingerprint-verified standalone Win32 bundles.
 /dist/win32-browser.js
 /packages/win32-browser/dist/win32-browser.js
+
+# Source-derived native compiler and editor diagnostics bundles; strictly fingerprinted.
+/dist/vb6-native.js
+/src/editor/diagnostics-payload.js
