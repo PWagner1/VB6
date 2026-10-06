@@ -113,3 +113,31 @@ jobs:
           name: win32-system-contracts
           path: reports/win32-system
           retention-days: 7
+
+  native-com-ole:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    env:
+      VB6_COM_ARCH: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Real system Automation and typed VARIANT regression
+        run: node tools/interop/test-native.mjs
+      - name: Native COM identity, OLE data, advisories and compound files
+        run: node tools/interop/test-com-ole.mjs
+      - name: Native OCX container and OLE contract fixtures
+        run: node tools/interop/test-container-contracts.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-com-ole-${{ matrix.architecture }}
+          path: reports/native-interop
+          if-no-files-found: warn
+          retention-days: 7
