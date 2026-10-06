@@ -67,5 +67,38 @@ class PackageNotices(unittest.TestCase):
                         self.assertIn(b'LICENSES/98.css.txt', z.read(manifests[0]))
                     self.assertIsNone(z.testzip())
 
+    def test_source_inventory_retains_build_inputs_not_local_dependencies(self):
+        spec = importlib.util.spec_from_file_location('packaging_under_test', TOOLS / 'package-release.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / 'source'
+            module.ROOT = root
+            required = {
+                '.gitattributes', '.github/workflows/validate.yml', 'package.json',
+                'desktop/policy.cjs', 'desktop/package.json',
+                'packages/auto-layout/src/index.js', 'packages/auto-layout/dist/auto-layout.js',
+                'packages/win32-browser/src/index.js', 'packages/native-debugger/src/index.js',
+                'packages/vb6-compute/cli-core.mjs', 'tools/build.mjs',
+                'tests/tooling-references.test.mjs',
+            }
+            excluded = {
+                'desktop/node_modules/dependency/index.js', 'packages/auto-layout/node_modules/dependency/index.js',
+                'tools/__pycache__/test.pyc', '.git/config', 'release/previous.zip',
+                'desktop/.env', 'desktop/.env.local', 'packages/example/server-profiles.local.json',
+                'desktop/.native-build/app.exe', 'desktop/local.sqlite',
+            }
+            for name in required | excluded:
+                file = root / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_bytes(b'Synthetic source inventory fixture\n')
+            entries = {rel.as_posix(): p.read_bytes() for rel, p in module.files()}
+            self.assertEqual(set(entries), required)
+            archive = Path(temp) / 'source.zip'
+            module.archive(archive, entries)
+            with zipfile.ZipFile(archive) as z:
+                self.assertEqual(set(z.namelist()), required)
+                self.assertIsNone(z.testzip())
+
 if __name__ == '__main__':
     unittest.main()

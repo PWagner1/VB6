@@ -78,4 +78,7 @@ links; generated paths and platform behavior still require integration testing.
 Keep generated logs, screenshots and local experiments out of this directory.
 Use the existing ignored output locations and CI artifacts. Historical release
 reports and source-checksum snapshots are evidence, not a list of current tool
-dependencies; new distributions generate their own source manifests.
+dependencies; new distributions generate their own source manifests. Source ZIPs
+retain `packages/`, `desktop/`, workflow files and `.gitattributes` so builds and
+validation can run after extraction. Local dependencies, native-build scratch
+files, Python caches, environment secrets and local data profiles are excluded.
