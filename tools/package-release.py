@@ -6,8 +6,8 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 VERSION=json.loads((ROOT/'package.json').read_text())['version']
 PREFIX=f'VB6-Studio-Web-{VERSION}'
-DIRS={'LICENSES','src','tools','tests','docs','examples','dist','packages','reports'}
-ROOT_FILES={'README.md','RELEASE-NOTES.md','THIRD-PARTY-NOTICES.md','LICENSE','package.json','.gitignore','RECOVERY.md'}
+DIRS={'.github','LICENSES','desktop','packages','src','tools','tests','docs','examples','dist','reports'}
+ROOT_FILES={'.gitattributes','README.md','RELEASE-NOTES.md','THIRD-PARTY-NOTICES.md','LICENSE','package.json','.gitignore'}
 EXCLUDED={'reports/saved-project.vb6web','reports/exported-app.html','reports/features-04/runtime-export.html'}
 REQUIRED_REPORTS = ('reports/README.md', 'reports/boundaries-06/browser-boundaries-06.json', 'reports/boundaries-06/explicit-evaluation.png', 'reports/boundaries-06/mdi-runtime.png', 'reports/boundaries-06/resource-editor.png', 'reports/browser-features-04.json', 'reports/browser-features-04.md', 'reports/browser-visual-tests.json', 'reports/browser-visual-tests.md', 'reports/features-04/bookmarks-split.png', 'reports/features-04/object-browser-classic.png', 'reports/features-04/project-search.png', 'reports/features-04/runtime-workbench.png', 'reports/finalization-05/browser-finalization-05.json', 'reports/finalization-05/browser-finalization-05.md', 'reports/finalization-05/large-editor-completion.png', 'reports/finalization-05/paused-data-tip.png', 'reports/finalization-05/workspace-restored.png', 'reports/release-validation.json', 'reports/screenshots/ide-designer.png', 'reports/screenshots/richtext-editor.png', 'reports/visual/classic-designer.png', 'reports/visual/contrast-code.png', 'reports/visual/split-procedure-views.png')
 
@@ -18,7 +18,9 @@ def files():
         rel=p.relative_to(ROOT)
         if rel.parts[0] not in DIRS and str(rel) not in ROOT_FILES:continue
         if rel.parts[0]=='reports' and rel.as_posix()!='reports/README.md':continue
-        if '__pycache__' in rel.parts or p.suffix=='.pyc' or str(rel) in EXCLUDED:continue
+        if any(part in {'.git','node_modules','__pycache__','.native-build'} for part in rel.parts):continue
+        if p.suffix in {'.pyc','.sqlite'} or rel.as_posix() in EXCLUDED:continue
+        if p.name in {'.env','server-profiles.local.json'} or p.name.startswith('.env.'):continue
         if p.suffix.lower() in {'.ttf','.otf','.woff','.woff2','.eot'}:raise RuntimeError('Font redistribution is not permitted: '+str(rel))
         yield rel,p
 
