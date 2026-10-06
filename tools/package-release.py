@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 VERSION=json.loads((ROOT/'package.json').read_text())['version']
 PREFIX=f'VB6-Studio-Web-{VERSION}'
 DIRS={'LICENSES','src','tools','tests','docs','examples','dist','reports'}
-ROOT_FILES={'README.md','RELEASE-NOTES.md','THIRD-PARTY-NOTICES.md','LICENSE','package.json','.gitignore','RECOVERY.md'}
+ROOT_FILES={'README.md','RELEASE-NOTES.md','THIRD-PARTY-NOTICES.md','LICENSE','package.json','.gitignore'}
 EXCLUDED={'reports/saved-project.vb6web','reports/exported-app.html','reports/features-04/runtime-export.html'}
 def digest(data:bytes)->str:return hashlib.sha256(data).hexdigest()
 def files():
