@@ -31,6 +31,7 @@ def main():
         if not p.is_file():continue
         rel=p.relative_to(ROOT)
         if rel.parts[0] not in ALLOWED and str(rel) not in ROOT_FILES:continue
+        if rel.parts[0]=='reports' and rel.as_posix()!='reports/README.md':continue
         if '__pycache__' in rel.parts or p.suffix=='.pyc' or rel.as_posix() in EXCLUDE:continue
         if p.suffix.lower() in FONT_EXT:raise RuntimeError('Unexpected font file: '+str(rel))
         entries[rel.as_posix()]=p.read_bytes()
