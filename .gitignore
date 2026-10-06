@@ -66,3 +66,7 @@ reports/win32-system/
 
 # Application-theme/icon-pack browser fixtures and evidence (CI artifacts).
 reports/application-themes/
+
+# Source-derived native compiler and editor diagnostics bundles; strictly fingerprinted.
+/dist/vb6-native.js
+/src/editor/diagnostics-payload.js
