@@ -80,7 +80,7 @@ export class ConnectionPoint extends ComObject {
     this.AddRef();this.#depth++;const failures=[];
     try { for(const [cookie,sink] of [...this.#connections]) {
       if(!this.#connections.has(cookie))continue;sink.AddRef();
-      try { const result=callback(sink,cookie);if(result?.then)throw new ComError(HRESULT.E_INVALIDARG,'COM callbacks must be synchronous'); }
+      try { const result=callback(sink,cookie);if(result?.then){Promise.resolve(result).catch(()=>{});throw new ComError(HRESULT.E_INVALIDARG,'COM callbacks must be synchronous');} }
       catch(error){failures.push({cookie,error});}finally{sink.Release();}
     }return failures; } finally { this.#depth--;this.Release(); }
   }
