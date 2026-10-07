@@ -34,5 +34,9 @@ server-profiles.local.json
 /dist/win32-browser.js
 /packages/win32-browser/dist/win32-browser.js
 
-# Source-derived native compiler SDK; exact fingerprint checked on every build.
+# Source-derived, fingerprint-verified layout/native/editor bundles.
+/dist/auto-layout.js
+/packages/auto-layout/dist/auto-layout.js
 /dist/vb6-native.js
+/src/editor/diagnostics-payload.js
+/dist/studio.css
