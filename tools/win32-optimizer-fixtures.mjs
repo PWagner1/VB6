@@ -109,7 +109,8 @@ export function assemblerFixture(optimization=1) {
   const check=(name,condition='e')=>{const ok=x.unique('check');checks.push(name);x.branch(condition,ok).api('kernel32.dll','ExitProcess',[checks.length]).label(ok);};
   const equal=(n,name)=>{x.compare(n);check(name);};
   const float=(label,value)=>{const bytes=new Uint8Array(8);new DataView(bytes.buffer).setFloat64(0,value,true);data.align(8).label(label).emit(...bytes);};
-  data.label('counter').u32(4).label('pair').u32(1).u32(2).label('result').zero(16).label('packed').u32(1).u32(2).u32(3).u32(4);float('a',1.5);float('b',2.25);
+  data.label('counter').u32(4).label('pair').u32(1).u32(2).label('result').zero(16).label('packed').u32(1).u32(2).u32(3).u32(4);
+  data.align(16).label('packed-aligned').u32(1).u32(2).u32(3).u32(4);float('a',1.5);float('b',2.25);
   x.label('entry').enter(64).mov('eax',127).add('eax',128);equal(255,'checked scalar immediate encoding executes');
   x.mov('eax',-7).cdq().mov('ecx',3).idiv('ecx');equal(-2,'signed IDIV quotient');x.mov('eax','edx');equal(-1,'signed IDIV remainder');
   x.mov('eax',0x80000000).shift('sar','eax',31);equal(-1,'arithmetic right shift');
@@ -118,8 +119,11 @@ export function assemblerFixture(optimization=1) {
   x.fld(mem64({label:'a'})).fld(mem64({label:'b'})).fsubp(1).fstp(mem64({label:'result'}));
   x.sse('movsd','xmm0',mem64({label:'result'})).sseConvert('cvttsd2si','eax','xmm0');equal(0,'x87 stack subtraction and SSE truncation');
   x.sse('movsd','xmm3',mem64({label:'a'})).sse('addsd','xmm3',mem64({label:'b'})).sseConvert('cvttsd2si','eax','xmm3');equal(3,'SSE2 scalar Double arithmetic and conversion');
-  x.sse('pxor','xmm4','xmm4').sse('paddd','xmm4',mem128({label:'packed'})).sseShift('pslld','xmm4',1).sse('movdqu',mem128({label:'result'}),'xmm4');
+  // Legacy packed arithmetic requires aligned memory; MOVDQU is the explicit unaligned load.
+  x.sse('pxor','xmm4','xmm4').sse('movdqu','xmm5',mem128({label:'packed'})).sse('paddd','xmm4','xmm5').sseShift('pslld','xmm4',1).sse('movdqu',mem128({label:'result'}),'xmm4');
   for(let i=0;i<4;i++){x.mov('eax',mem32({label:'result',displacement:i*4}));equal((i+1)*2,'SSE2 packed lane '+i);}
+  x.sse('pxor','xmm4','xmm4').sse('paddd','xmm4',mem128({label:'packed-aligned'})).sse('movdqu',mem128({label:'result'}),'xmm4');
+  for(let i=0;i<4;i++){x.mov('eax',mem32({label:'result',displacement:i*4}));equal(i+1,'aligned SSE2 memory lane '+i);}
   x.mov('eax',4).mov('ecx',9).atomic('cmpxchg',mem32({label:'counter'}),'ecx');check('locked CMPXCHG success flag');
   x.mov('eax',3).atomic('xadd',mem32({label:'counter'}),'eax');equal(9,'locked XADD returns old value');x.mov('eax',mem32({label:'counter'}));equal(12,'locked XADD writes sum');
   x.mov('eax',1).mov('edx',2).mov('ebx',3).mov('ecx',4).cmpxchg8b(mem64({label:'pair'}));check('locked CMPXCHG8B success flag');
@@ -131,7 +135,7 @@ export function assemblerFixture(optimization=1) {
   x.label('indirect').add('ecx',1).mov('eax','ecx').ret();
   x.label('sum').enter().mov('eax',mem32({base:'ebp',displacement:8})).add('eax',mem32({base:'ebp',displacement:12})).leave(8);
   const linked=image.finish('entry',{optimization});
-  return {bytes:linked.bytes,report:{size:linked.bytes.length,optimization:linked.optimization,architecture:'x86',target:'assembler-test',sections:linked.sections,imports:linked.imports},checks};
+  return {bytes:linked.bytes,report:{size:linked.bytes.length,optimization:linked.optimization,architecture:'x86',target:'assembler-test',dataAddresses:{packed:linked.symbols.packed,alignedPacked:linked.symbols['packed-aligned'],result:linked.symbols.result},sections:linked.sections,imports:linked.imports},checks};
 }
 export function writeOptimizerFixtures(directory='reports/native-optimizer') {
   fs.mkdirSync(directory,{recursive:true});const reports=[],fixture=optimizerFixture();
