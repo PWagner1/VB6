@@ -19,3 +19,26 @@ of arbitrary third-party COM/OCX components. Native execution uses the separatel
 opted-in Windows companion.
 
 Run `npm test` in this directory for standalone contract tests.
+
+## Automation and OLE services
+
+The `/com` entry also exposes `DispatchObject`, `ComByRef`, `DISPATCH` and
+`DISPID`: case-insensitive names, named/reversed dispatch arguments, optional
+parameters, default members, property puts and synchronous callbacks.
+
+The `/ole` entry exposes `MemoryStream`, `StgMedium`, `OleDataObject`,
+`OleClipboard`, `OleDragSession`, `DropSource` and `DropTarget`, with clipboard
+format and effect constants. Streams are direct-mode and bounded; stream clones
+share bytes but not cursors. Clipboard flush takes an independent snapshot.
+Data objects support delayed rendering, format negotiation and bounded advisory
+connections. Advisory callback media are borrowed until the callback returns.
+
+`npm test` also works inside the installed package; the contract tests are shipped
+with it. Build all three reusable packages from the repository using
+`npm run package:com-ole`, and validate an offline external consumer using
+`npm run test:com-ole:packages`. The other packages are `@vb6/automation` and
+`@vb6/native-automation`; no npm publication is performed.
+
+See [COM/OLE integration and support matrix](https://github.com/wieslawsoltes/VB6/blob/main/docs/COM-OLE.md)
+for VB `GetObject` semantics, ownership examples, native permission grants and
+remaining compatibility boundaries.
