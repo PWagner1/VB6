@@ -95,7 +95,7 @@ namespace VB6Interop {
     }
     public void GetData(ref FORMATETC format,out STGMEDIUM medium){var item=Find(format);medium=NativeOleMedium.Create(item.Format.tymed,item.Data);}
     public void GetDataHere(ref FORMATETC format,ref STGMEDIUM medium){var item=Find(format);if((format.tymed&medium.tymed)==0)throw new COMException("GetDataHere medium mismatch",NativeOleMedium.MediumError);NativeOleMedium.WriteHere(ref medium,item.Data);}
-    public int QueryGetData(ref FORMATETC format){try{Find(format);return 0;}catch(Exception error){return Marshal.GetHRForException(error);}}
+    public int QueryGetData(ref FORMATETC format){try{Find(format);return 0;}catch(Exception error){return error.HResult;}}
     public int GetCanonicalFormatEtc(ref FORMATETC input,out FORMATETC output){output=input;output.ptd=IntPtr.Zero;return 0x40130;}
     public void SetData(ref FORMATETC format,ref STGMEDIUM medium,bool release){
       NativeOleMedium.CheckFormat(format,true);if(stopped)throw new InvalidOperationException("OLE data object was stopped");if(format.tymed!=medium.tymed)throw new COMException("SetData medium mismatch",NativeOleMedium.MediumError);
@@ -112,8 +112,8 @@ namespace VB6Interop {
       // Match the portable implementation rather than the holder's ignore policy.
       if(((int)flags&64)!=0)flags|=(ADVF)1;
       if(sink==null)throw new ArgumentNullException("sink");if(AdviceCount()>=256)throw new COMException("OLE advisory limit",unchecked((int)0x80040201));if(holder==null)Marshal.ThrowExceptionForHR(CreateDataAdviseHolder(out holder));return holder.Advise(this,ref format,flags,sink,out connection);
-    }catch(Exception error){return Marshal.GetHRForException(error);}}
-    public void DUnadvise(int connection){if(holder==null)throw new COMException("No advisory connection",unchecked((int)0x80040004));Marshal.ThrowExceptionForHR(holder.Unadvise(connection));}
+    }catch(Exception error){return error.HResult;}}
+    public void DUnadvise(int connection){if(holder==null)throw new COMException("No advisory connection",unchecked((int)0x80040004));Marshal.ThrowExceptionForHR(holder.Unadvise(connection),new IntPtr(-1));}
     public int EnumDAdvise(out IEnumSTATDATA enumerator){if(holder==null)Marshal.ThrowExceptionForHR(CreateDataAdviseHolder(out holder));return holder.EnumAdvise(out enumerator);}
     public void Stop(){if(stopped)return;stopped=true;if(holder!=null)holder.SendOnDataChange(this,0,(ADVF)64);}
   }
@@ -142,7 +142,7 @@ namespace VB6Interop {
     static void RecordNativeDataChange(string token,FORMATETC format,STGMEDIUM medium){
       var row=D("connection",token,"kind","data","format",FormatWire(format),"tymed",(int)medium.tymed);
       try{if(medium.tymed!=0)row.Add("data",Convert.ToBase64String(NativeOleMedium.Read(ref medium)));}
-      catch(Exception error){row.Add("snapshotError",error.Message);row.Add("hresult",unchecked((uint)Marshal.GetHRForException(error)));}
+      catch(Exception error){row.Add("snapshotError",error.Message);row.Add("hresult",unchecked((uint)error.HResult));}
       QueueComNotification(row);
     }
     static void QueueComNotification(Dictionary<string,object> row){

@@ -79,6 +79,9 @@ namespace VB6Interop {
       finally{if(OleInitialized){NativeOleUninitialize();OleInitialized=false;}}
     }
     static bool TryComOle(Dictionary<string,object> request,out object result){
+      // Error information belongs to a logical COM thread. An earlier request
+      // must not replace the HRESULT/diagnostic returned by the next provider.
+      BeginBrowsingCall();
       string op=S(request,"op");result=null;
       if(op=="com.getActive"){
         string name=S(request,"progId");if(!ActiveObjectGrants.Contains(name))throw new UnauthorizedAccessException("Existing-object access was not granted");
