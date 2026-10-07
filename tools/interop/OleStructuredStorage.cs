@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using STATSTG = System.Runtime.InteropServices.ComTypes.STATSTG;
 namespace VB6Interop {
   public static partial class AutomationHost {
     sealed class StorageBudget {public int Entries,Bytes;}

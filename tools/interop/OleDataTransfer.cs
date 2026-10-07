@@ -6,6 +6,7 @@ using System.Linq;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using STATSTG = System.Runtime.InteropServices.ComTypes.STATSTG;
 using NativeDataInterface=System.Runtime.InteropServices.ComTypes.IDataObject;
 namespace VB6Interop {
   [ComImport,Guid("00000110-0000-0000-C000-000000000046"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -107,6 +108,9 @@ namespace VB6Interop {
     int AdviceCount(){if(holder==null)return 0;IEnumSTATDATA enumerator=null;int count=0;try{Marshal.ThrowExceptionForHR(holder.EnumAdvise(out enumerator));var rows=new STATDATA[1];var fetched=new int[1];while(true){fetched[0]=0;int hr=enumerator.Next(1,rows,fetched);Marshal.ThrowExceptionForHR(hr);if(fetched[0]==0)break;try{if(++count>=256)break;}finally{if(rows[0].formatetc.ptd!=IntPtr.Zero)Marshal.FreeCoTaskMem(rows[0].formatetc.ptd);if(rows[0].advSink!=null&&Marshal.IsComObject(rows[0].advSink))Marshal.ReleaseComObject(rows[0].advSink);}}return count;}finally{if(enumerator!=null&&Marshal.IsComObject(enumerator))Marshal.ReleaseComObject(enumerator);}}
     public int DAdvise(ref FORMATETC format,ADVF flags,IAdviseSink sink,out int connection){connection=0;try{
       if(stopped)throw new InvalidOperationException("OLE data object was stopped");if(((int)flags&~71)!=0)throw new COMException("Advisory flags unsupported",unchecked((int)0x80040003));NativeOleMedium.CheckFormat(format,false,((int)flags&1)!=0);
+      // IDataObject permits treating DATAONSTOP as NODATA when specified alone.
+      // Match the portable implementation rather than the holder's ignore policy.
+      if(((int)flags&64)!=0)flags|=(ADVF)1;
       if(sink==null)throw new ArgumentNullException("sink");if(AdviceCount()>=256)throw new COMException("OLE advisory limit",unchecked((int)0x80040201));if(holder==null)Marshal.ThrowExceptionForHR(CreateDataAdviseHolder(out holder));return holder.Advise(this,ref format,flags,sink,out connection);
     }catch(Exception error){return Marshal.GetHRForException(error);}}
     public void DUnadvise(int connection){if(holder==null)throw new COMException("No advisory connection",unchecked((int)0x80040004));Marshal.ThrowExceptionForHR(holder.Unadvise(connection));}
