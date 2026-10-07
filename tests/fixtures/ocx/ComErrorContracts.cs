@@ -5,6 +5,10 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 namespace VB6Interop {
   public static partial class AutomationHost {
+    static object DataSequenceStep(System.Collections.Generic.Dictionary<string,object> request) {
+      try { object result;Require(TryComOle(request,out result),"known OLE service operation");return result; }
+      catch(Exception error) { throw new InvalidOperationException("OLE contract step "+S(request,"op"),error); }
+    }
     public static string RunComOleErrorContracts() {
       var report=Map(Json.DeserializeObject(RunComOleContainerContracts()));
       var checks=A(report["checks"]).Select(item=>(string)item).ToList();
@@ -25,6 +29,19 @@ namespace VB6Interop {
           Require(source.QueryGetData(ref missing)==unchecked((int)0x80040064),"format query returns its exact HRESULT");
         } finally { BeginBrowsingCall();source.DUnadvise(cookie);source.Stop(); }
         checks.Add("advisory HRESULTs are independent of stale thread IErrorInfo");
+        var created=Map(DataSequenceStep(D("op","ole.dataCreate")));string handle=S(created,"id");
+        try {
+          var wire=D("cfFormat",13,"tymed",4);
+          DataSequenceStep(D("op","ole.dataSet","handle",handle,"format",wire,"data","AQID"));
+          var once=Map(DataSequenceStep(D("op","ole.dataAdvise","handle",handle,"format",wire,"flags",6)));
+          DataSequenceStep(D("op","ole.dataChanges"));
+          DataSequenceStep(D("op","ole.dataUnadvise","connection",once["connection"]));
+          var again=Map(DataSequenceStep(D("op","ole.dataAdvise","handle",handle,"format",wire,"flags",1)));
+          DataSequenceStep(D("op","ole.dataSet","handle",handle,"format",wire,"data","BAUG"));
+          DataSequenceStep(D("op","ole.dataUnadvise","connection",again["connection"]));
+          checks.Add("expired ONLYONCE connection permits subsequent advisory registration");
+        } finally { BeginBrowsingCall();Release(handle); }
+        DataSequenceStep(D("op","ole.dataChanges"));
       } finally { NativeOleUninitialize(); }
       report["checks"]=checks.ToArray();return Json.Serialize(report);
     }
