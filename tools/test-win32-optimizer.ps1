@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 # Only the test driver uses PowerShell. Each tested app is a freestanding PE32.
 $root = (Resolve-Path $Directory).Path
 $plans = Get-Content (Join-Path $root 'builds.json') -Raw | ConvertFrom-Json
-if ($plans.Count -ne 9) { throw 'Expected all three fixtures at all three optimization levels' }
+if ($plans.Count -ne 12) { throw 'Expected all four fixtures at all three optimization levels' }
 $results = @()
 foreach ($plan in $plans) {
   $report = [ordered]@{name=$plan.name;optimization=$plan.optimization;ok=$false;architecture='x86';platform=[Environment]::OSVersion.VersionString;sha256=$null;exitCode=$null;assertions=$plan.checks}

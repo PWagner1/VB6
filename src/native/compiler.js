@@ -1,3 +1,5 @@
+import {NATIVE_STRING_CONSTANTS,nativeStringLibraryMethods,emitNativeStringLibraryHelpers} from './string-library.js';
+import {nativeFlowMethods,nativeGoSubLimit} from './control-flow.js';
 import {nativeOptimizationLevel} from './optimizer.js';
 import {nativeOptimizationMethods} from './optimization.js';
 import {NativeRecordLayouts,nativeRecordMethods} from './records.js';
@@ -27,7 +29,7 @@ const mem = memory => ({memory});
 const INT_TYPES = new Set(['long', 'integer', 'byte', 'boolean']);
 const CLASSES = {CommandButton:'BUTTON', Label:'STATIC', TextBox:'EDIT', CheckBox:'BUTTON', OptionButton:'BUTTON', Frame:'BUTTON', ListBox:'LISTBOX', ComboBox:'COMBOBOX', Timer:null};
 const BOOL_CONDITIONS = {'=':0x94, '<>':0x95, '<':0x9c, '<=':0x9e, '>':0x9f, '>=':0x9d};
-const CONSTANTS = {...NATIVE_DATE_CONSTANTS,vbtrue:-1,vbfalse:0,vbnormal:0,vbminimized:1,vbmaximized:2,vbmodal:1,vbmodeless:0,vbokonly:0,vbokcancel:1,vbyesno:4,vbyesnocancel:3,vbinformation:64,vbexclamation:48,vbcritical:16,vbquestion:32,vbok:1,vbcancel:2,vbyes:6,vbno:7,vbcrlf:'\r\n',vbnewline:'\r\n',vbtab:'\t',vbnullchar:'\0',vbnullstring:''};
+const CONSTANTS = {...NATIVE_DATE_CONSTANTS,...NATIVE_STRING_CONSTANTS,vbtrue:-1,vbfalse:0,vbnormal:0,vbminimized:1,vbmaximized:2,vbmodal:1,vbmodeless:0,vbokonly:0,vbokcancel:1,vbyesno:4,vbyesnocancel:3,vbinformation:64,vbexclamation:48,vbcritical:16,vbquestion:32,vbok:1,vbcancel:2,vbyes:6,vbno:7,vbcrlf:'\r\n',vbnewline:'\r\n',vbtab:'\t',vbnullchar:'\0',vbnullstring:''};
 export class NativeCompileError extends Error {
   constructor(message, source = '', line = 0) { super(`${source ? source + ':' + line + ': ' : ''}${message}`); this.name = 'NativeCompileError'; this.diagnostics = [{severity:'error',source,line,message}]; }
 }
@@ -57,7 +59,7 @@ export function extractNativeDeclarations(module) {
     if (!m) throw new NativeCompileError('Unsupported native Declare syntax; use a scalar stdcall declaration', module.name, start + 1);
     const dll = /\.dll$/i.test(m[4]) ? m[4] : m[4] + '.dll', name = key(m[3]);
     let params;
-    try { params = parseParameters(m[6]); }
+    try { params = parseParameters(m[6], {}, {allowAny:true}); }
     catch (error) { throw new NativeCompileError(error.message,module.name,start + 1); }
     if(params.reduce((sum,p)=>sum+nativeParameterBytes(p),0)>65532)
       throw new NativeCompileError('Native Declare argument area exceeds the x86 stdcall return limit',module.name,start + 1);
@@ -73,8 +75,8 @@ export function extractNativeDeclarations(module) {
 
 class NativeCompiler {
   constructor(project, options = {}) {
-    try { this.optimization=nativeOptimizationLevel(options.optimization); } catch(error) { this.fail(error.message); }
-    this.optimizationStats={constantsFolded:0,immediateOperations:0};
+    try { this.optimization=nativeOptimizationLevel(options.optimization);this.maxGoSubDepth=nativeGoSubLimit(options.maxGoSubDepth); } catch(error) { this.fail(error.message); }
+    this.optimizationStats={constantsFolded:0,immediateOperations:0,constantsPropagated:0,directBranches:0,constantBranches:0,jumpTables:0};
     this.maxArrayBytes=nativeArrayLimit(options.maxArrayBytes, message=>this.fail(message));
     this.project = normalizeProject(project); this.externals = new Map();
     if(THEMES[this.project.settings.theme]?.family) this.fail('Optional application theme '+this.project.settings.theme+' requires the HTML or Electron desktop target; native Win32 AOT uses system-managed controls. Choose a classic application theme for this target.');
@@ -167,6 +169,7 @@ class NativeCompiler {
     }
   }
   variable(node, context = this.context) {
+    if(node.kind==='with')return this.currentNativeWith(context).variable;
     const record=this.recordMember(node,context);if(record)return record;
     if (node.kind === 'group') return this.variable(node.expr,context);
     if (node.kind === 'call') {
@@ -183,7 +186,7 @@ class NativeCompiler {
     const binding=this.nativeConstant(node);if(binding)return binding.value;
     return node.kind==='id'&&!this.variable(node)?(CONSTANTS[key(node.name)]??this.layoutConstant(node.name)):undefined;
   }
-  address(variable) { if(!variable)this.fail('Expression is not addressable'); if(variable.recordOf)return this.recordAddress(variable); if(variable.elementOf)return this.elementAddress(variable); this.rawStorageAddress(variable);return null; }
+  address(variable) { if(!variable)this.fail('Expression is not addressable'); if(variable.nativeWithAddress)return this.loadNativeWithAddress(variable); if(variable.recordOf)return this.recordAddress(variable); if(variable.elementOf)return this.elementAddress(variable); this.rawStorageAddress(variable);return null; }
   load(variable) {
     if(variable.nativeRecord||variable.recordFieldArray)this.fail('Native record values require record assignment, ByRef, Len/LenB or VarPtr');
     if(variable.nativeArray&&!variable.elementOf)this.fail('Array requires indices: '+variable.name);
@@ -216,6 +219,7 @@ class NativeCompiler {
   ensure(object) { const form = object.form ? object : object.module; this.x.call(form.create); if(object.indexed)this.resolveControlHandle(object); }
   handle(object) { this.ensure(object); this.x.value(this.controlHandleRef(object)); }
   type(node) {
+    const stringType=this.stringLibraryType(node);if(stringType)return stringType;
     const layoutType=this.layoutType(node);if(layoutType)return layoutType;
     const bound=this.nativeConstant(node);if(bound)return bound.type;
     const intervalType=this.dateIntervalType(node);if(intervalType)return intervalType;
@@ -272,8 +276,7 @@ class NativeCompiler {
     }
     if (this.type(node.left) === 'string' || this.type(node.right) === 'string') {
       if (!Object.hasOwn(BOOL_CONDITIONS,op) || this.type(node.left) !== this.type(node.right)) this.fail('Unsupported native string operation: ' + op);
-      if (this.context.module.module.optionCompare !== 'binary') this.fail('Native strings currently require Option Compare Binary');
-      this.expression(node.left); x.push(); this.expression(node.right); x.emit(0x5b).push().emit(0x53).call('native:string:compare').compare(0); this.boolean(op); return;
+      this.compareNativeStrings(node.left,node.right);x.compare(0);this.boolean(op);return;
     }
     this.numeric(node.left); x.push(); this.numeric(node.right); x.emit(0x89,0xc1,0x58);
     if (op === '+') x.emit(0x01,0xc8).branch('o','error:6');
@@ -339,7 +342,7 @@ class NativeCompiler {
     if(this.currencyBuiltin(node,name))return;
     if(this.numericBuiltin(node,name))return;
     if(this.recordBuiltin(node,name))return;
-    if(this.stringBuiltin(node,name))return;
+    if(this.stringLibraryBuiltin(node,name)||this.stringBuiltin(node,name))return;
     if(name==='lbound'||name==='ubound'){this.arrayBoundCall(node,name==='ubound');return;}
     if (name === 'msgbox') {
       if (args.length < 1 || args.length > 3) this.fail('MsgBox expects one to three arguments');
@@ -383,13 +386,13 @@ class NativeCompiler {
     this.nativeTypedCall(target,plan);
   }
   procedure(context) {
-    this.context = context; const outer=this.x, body=new BinarySection('.body',0), x=this.x=new X86(body,this.image), code=context.proc.code, end=context.label+':return';
+    this.context = context; const outer=this.x, body=new BinarySection('.body',0), x=this.x=new X86(body,this.image), code=this.optimizedNativeProcedure(context), end=context.label+':return';
     // Lower first so temporary text buffers are stack-local, including recursive calls.
-    x.sequence=outer.sequence;context.stringTemps=[];context.arrayPins=[];
+    x.sequence=outer.sequence;context.stringTemps=[];context.arrayPins=[];this.prepareNativeFlow(context);
     for (let i = 0; i < code.length; i++) {
       const ins = this.instruction = code[i]; x.label(context.label + ':' + i).call(context.label+':clear-strings');this.errorCheckpoint(context,i,ins);
       if(!context.module.nativeInternal)this.sourceMap.push({symbol:context.label + ':' + i,source:ins.source,line:ins.line,procedure:ins.procedure});
-      if(this.errorInstruction(ins,context))continue;
+      if(this.errorInstruction(ins,context)||this.nativeFlowInstruction(ins,context,i))continue;
       if (ins.op === 'dim') { for (const decl of ins.decls) if (!decl.constant && decl.initial) { this.storageExpression(context.locals.get(key(decl.name)),decl.initial); this.store(context.locals.get(key(decl.name))); } }
       else if (ins.op === 'assign') {
         if (ins.objectSet) this.fail('Native object assignment is not lowered');
@@ -665,7 +668,7 @@ class NativeCompiler {
   helpers() {
     const x = this.x;
     emitNativeNumericHelpers(this);emitNativeCurrencyHelpers(this);emitNativeDateHelpers(this);emitNativeDateIntervalHelpers(this);
-    emitNativeStorageHelpers(this);
+    emitNativeStorageHelpers(this);emitNativeStringLibraryHelpers(this);
     emitNativeArrayHelpers(this);
     // int-to-string(value, buffer), including INT_MIN without signed negation overflow.
     const positive = x.unique(), digits = x.unique(), copy = x.unique(), done = x.unique();
@@ -705,10 +708,10 @@ class NativeCompiler {
     x.label(dispatch).api('user32.dll','TranslateMessage',['msg']).api('user32.dll','DispatchMessageW',['msg']).jump(loop).label(quit).api('kernel32.dll','ExitProcess',[0]);
     this.image.manifest('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"><trustInfo xmlns="urn:schemas-microsoft-com:asm.v3"><security><requestedPrivileges><requestedExecutionLevel level="asInvoker" uiAccess="false"/></requestedPrivileges></security></trustInfo><dependency><dependentAssembly><assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="x86" publicKeyToken="6595b64144ccf1df" language="*"/></dependentAssembly></dependency></assembly>');
     const linked = this.image.finish('entry',{optimization:this.optimization});
-    return {bytes:linked.bytes,report:{optimization:{...linked.optimization,...this.optimizationStats},records:[...this.recordLayouts.layouts.values()].map(r=>({name:r.id,size:r.size,fileSize:r.fileSize,alignment:r.alignment,fields:[...r.fields.values()].map(f=>({name:f.name,type:f.type,offset:f.recordOffset,bytes:f.nativeBytes}))})),...(this.layoutModule?{layout:{enabled:true,kernel:'private VB-to-x86',logicalUnit:'twip',rounding:'nearest HWND pixel',nodes:this.layoutSeed.count,features:['anchor-16-masks','nested-containers','min-max','dock','horizontal','vertical','wrap','suspend-resume']}}:{}),target:'win32-aot',architecture:'x86',format:'PE32',extraction:false,arrayLimits:{maxBytes:this.maxArrayBytes,maxRank:60},runtime:'Win32 system DLLs; no embedded JavaScript engine or VB6 runtime',graphics:'native Windows controls / GDI, not WebGPU',size:linked.bytes.length,imports:linked.imports,sections:linked.sections,sourceMap:this.sourceMap.map(s => ({...s,rva:linked.symbols[s.symbol]})),callbacks:[...(this.nativeCallbacks?.values()||[])].map(({target,label})=>({module:target.module.name,procedure:target.proc.name,rva:linked.symbols[label],argumentBytes:target.argumentBytes,thread:'application',convention:'stdcall'})),limits:['Typed scalars, fixed/dynamic scalar arrays, POD records and error recovery; managed records, classes, Variants/Decimal and unsupported VB constructs fail compilation.','Native controls use Windows theme/font metrics, not pixel-identical VB6 styling.','WebGPU remains a separate Electron target.']}};
+    return {bytes:linked.bytes,report:{optimization:{...linked.optimization,...this.optimizationStats},records:[...this.recordLayouts.layouts.values()].map(r=>({name:r.id,size:r.size,fileSize:r.fileSize,alignment:r.alignment,fields:[...r.fields.values()].map(f=>({name:f.name,type:f.type,offset:f.recordOffset,bytes:f.nativeBytes}))})),...(this.layoutModule?{layout:{enabled:true,kernel:'private VB-to-x86',logicalUnit:'twip',rounding:'nearest HWND pixel',nodes:this.layoutSeed.count,features:['anchor-16-masks','nested-containers','min-max','dock','horizontal','vertical','wrap','suspend-resume']}}:{}),target:'win32-aot',architecture:'x86',format:'PE32',extraction:false,arrayLimits:{maxBytes:this.maxArrayBytes,maxRank:60},controlFlow:{maxGoSubDepth:this.maxGoSubDepth,withRecords:true,computedBranches:true},runtime:'Win32 system DLLs; no embedded JavaScript engine or VB6 runtime',graphics:'native Windows controls / GDI, not WebGPU',size:linked.bytes.length,imports:linked.imports,sections:linked.sections,sourceMap:this.sourceMap.map(s => ({...s,rva:linked.symbols[s.symbol]})),callbacks:[...(this.nativeCallbacks?.values()||[])].map(({target,label})=>({module:target.module.name,procedure:target.proc.name,rva:linked.symbols[label],argumentBytes:target.argumentBytes,thread:'application',convention:'stdcall'})),limits:['Typed scalars, fixed/dynamic scalar arrays, POD records and error recovery; managed records, classes, Variants/Decimal and unsupported VB constructs fail compilation.','Native controls use Windows theme/font metrics, not pixel-identical VB6 styling.','WebGPU remains a separate Electron target.']}};
   }
 }
-Object.assign(NativeCompiler.prototype,nativeOptimizationMethods,nativeRecordMethods,nativeLayoutMethods,nativeStringInteropMethods,nativeCallbackMethods,nativeCallMethods,nativeBindingMethods,nativeStorageMethods,nativeErrorMethods,nativeArrayMethods,nativeNumericMethods,nativeControlArrayMethods,nativeCurrencyMethods,nativeDateMethods,nativeDateIntervalMethods);
+Object.assign(NativeCompiler.prototype,nativeStringLibraryMethods,nativeFlowMethods,nativeOptimizationMethods,nativeRecordMethods,nativeLayoutMethods,nativeStringInteropMethods,nativeCallbackMethods,nativeCallMethods,nativeBindingMethods,nativeStorageMethods,nativeErrorMethods,nativeArrayMethods,nativeNumericMethods,nativeControlArrayMethods,nativeCurrencyMethods,nativeDateMethods,nativeDateIntervalMethods);
 export function compileWin32(project, options = {}) {
   if (options.graphics && options.graphics !== 'gdi') throw new NativeCompileError('The freestanding Win32 target uses native controls/GDI; use the desktop target for WebGPU');
   if (options.arch && options.arch !== 'x86') throw new NativeCompileError('The freestanding compiler currently emits x86 PE32');

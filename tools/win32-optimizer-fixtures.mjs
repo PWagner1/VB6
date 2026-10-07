@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
+import {nativeLanguageFixture} from '../tests/fixtures/native-language.mjs';
 import {newProject} from '../src/project/model.js';
 import {compileWin32} from '../src/native/compiler.js';
 import {win32Fixtures} from './win32-fixtures.mjs';
@@ -141,7 +142,7 @@ export function writeOptimizerFixtures(directory='reports/native-optimizer') {
   fs.mkdirSync(directory,{recursive:true});const reports=[],fixture=optimizerFixture();
   const arithmetic=win32Fixtures()[0];
   // The existing arithmetic fixture is an independent regression, not an optimizer oracle.
-  const fixtures=[fixture,{project:arithmetic,checks:['existing AOT arithmetic/recursion/scalar/Declare regression']}];
+  const fixtures=[fixture,nativeLanguageFixture(),{project:arithmetic,checks:['existing AOT arithmetic/recursion/scalar/Declare regression']}];
   for(const {project,checks}of fixtures)for(const optimization of [0,1,2]) {
     const result=compileWin32(project,{optimization}),name=project.name+'-O'+optimization;
     const report={name,optimization,checks,sha256:createHash('sha256').update(result.bytes).digest('hex'),...result.report};
