@@ -25,3 +25,4 @@ export class DeclarationCursor {
   rest() { const text=this.text.slice(this.peek().start);this.index=this.tokens.length-1;return text; }
   end() { if(this.peek().type!=='eof')this.fail('Unexpected token in declaration: '+this.peek().raw); }
 }
+
