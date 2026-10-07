@@ -61,9 +61,16 @@ console.log(JSON.stringify({status:'passed',checks,nativeExecuted,architecture:p
 try{
   const manifest=await packComOle(artifacts);await fs.writeFile(path.join(work,'package.json'),JSON.stringify({name:'vb6-com-package-consumer',version:'1.0.0',private:true,type:'module'}));
   await runNpm(['install','--offline','--ignore-scripts','--no-audit','--no-fund','--package-lock=false',...manifest.packages.map(p=>path.join(artifacts,p.file))],work);
+  const testDir=path.join(work,'node_modules/@vb6/com-ole/test');
+  const testFiles=(await fs.readdir(testDir)).filter(n=>n.endsWith('.test.mjs')).sort().map(n=>path.join(testDir,n));
+  if(!testFiles.length)throw Error('Portable package must contain its runnable tests');
+  const portable=spawnSync(process.execPath,['--test','--test-reporter=tap',...testFiles],{cwd:work,encoding:'utf8',timeout:60000,maxBuffer:2*1024*1024});
+  if(portable.error||portable.status!==0)throw Error(portable.error?.message||portable.stderr||portable.stdout);
+  const portableCount=Number(portable.stdout.match(/^# tests (\d+)$/m)?.[1]);
+  if(!portableCount)throw Error('Missing installed portable test results');
   await fs.writeFile(path.join(work,'test.mjs'),script);
   const result=spawnSync(process.execPath,['test.mjs'],{cwd:work,encoding:'utf8',timeout:180000,maxBuffer:2*1024*1024,env:{...process.env,VB6_SOURCE_ROOT:root}});
   if(result.error||result.status!==0)throw Error(result.error?.message||result.stderr||result.stdout);
-  const report=JSON.parse(result.stdout.trim());await fs.mkdir(path.join(root,'reports/native-interop'),{recursive:true});
+  const report={...JSON.parse(result.stdout.trim()),portableTests:portableCount};await fs.mkdir(path.join(root,'reports/native-interop'),{recursive:true});
   await fs.writeFile(path.join(root,'reports/native-interop',`packages-${process.platform}-${process.env.VB6_COM_ARCH||process.arch}.json`),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
 }finally{await fs.rm(work,{recursive:true,force:true});}

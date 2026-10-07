@@ -11,9 +11,10 @@ $paths = @(
 $paths += Join-Path $root 'tests/fixtures/ocx/ContainerContracts.cs'
 $paths += Join-Path $root 'tests/fixtures/ocx/PropertyBrowsingContracts.cs'
 $paths += Join-Path $root 'tests/fixtures/ocx/ComOleContracts.cs'
+$paths += Join-Path $root 'tests/fixtures/ocx/ComErrorContracts.cs'
 Add-Type -Path $paths -ReferencedAssemblies System.Windows.Forms,System.Drawing,System.Web.Extensions,System.Core
 try {
-  [VB6Interop.AutomationHost]::RunComOleContainerContracts()
+  [VB6Interop.AutomationHost]::RunComOleErrorContracts()
 } catch {
   # Keep the native managed stack, not just PowerShell's invocation wrapper.
   $failure = $_.Exception
