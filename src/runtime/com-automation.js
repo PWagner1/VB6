@@ -9,16 +9,28 @@ function vbError(error){
   const result=new VBError(error.message,number);result.hresult=error.hresult;for(const field of ['source','description','helpFile','helpContext','argErr'])if(Object.hasOwn(error,field))result[field]=error[field];return result;
 }
 class ComAutomationBridge {
-  constructor(session){this.session=session;this.adapters=new Map();this.objects=new WeakMap();}
+  constructor(session){this.session=session;this.adapters=new Map();this.objects=new WeakMap();this.borrowed=new WeakMap();}
+  // Arguments are borrowed interfaces. Keep a distinguishable view so unchanged
+  // ByRef cells/array elements cannot consume the session's owning reference.
+  borrow(object){
+    const state={object,owned:0},view=Object.create(null);
+    for(const name of ['QueryInterface','GetTypeInfoCount','GetTypeInfo','GetIDsOfNames','Invoke','Call'])if(typeof object[name]==='function')view[name]=(...args)=>object[name](...args);
+    view.AddRef=()=>{const refs=object.AddRef();state.owned++;return refs;};
+    view.Release=()=>{if(!state.owned)throw new ComError(HRESULT.E_UNEXPECTED,'Cannot release a borrowed COM argument without AddRef');state.owned--;return object.Release();};
+    this.borrowed.set(view,state);return Object.freeze(view);
+  }
   input(value,depth=0){
     if(depth>16)throw new VBError('COM argument nesting limit',7);if(value===MISSING)return COM_MISSING;
-    if(isAutomationObject(value)){const object=this.objects.get(value);if(!object)throw new VBError('Object belongs to a different Automation provider',13);return object;}
+    if(isAutomationObject(value)){const object=this.objects.get(value);if(!object)throw new VBError('Object belongs to a different Automation provider',13);return this.borrow(object);}
     if(value instanceof VBArray){if(value.data.length>10000||value.bounds.length>8||!['variant','byte','integer','long','single','double','currency','decimal','date','string','boolean','object'].includes(value.type.toLowerCase()))throw new VBError('Unsupported COM array shape or element type',13);const copy=cloneValue(value);copy.data=copy.data.map(v=>this.input(v,depth+1));return copy;}
     return value;
   }
   output(value,depth=0){
     if(depth>16)throw new VBError('COM result nesting limit',7);if(value===COM_MISSING)return MISSING;
-    if(value?.QueryInterface&&value?.Release)return this.session.adopt(this.adoptOwned(value));
+    if(value?.QueryInterface&&value?.Release){
+      const loan=this.borrowed.get(value);if(loan){if(loan.owned){loan.owned--;value=loan.object;}else value=loan.object.QueryInterface(IID.IDispatch);}
+      return this.session.adopt(this.adoptOwned(value));
+    }
     if(value instanceof VBArray){if(value.data.length>10000||value.bounds.length>8)throw new VBError('COM result array limit',7);const copy=cloneValue(value);copy.data=copy.data.map(v=>this.output(v,depth+1));return copy;}
     if(Array.isArray(value)){if(value.length>10000)throw new VBError('COM result array limit',7);return VBArray.from(value.map(v=>this.output(v,depth+1)),0);}
     return value;

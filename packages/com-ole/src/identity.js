@@ -45,10 +45,12 @@ export class ComEnumerator extends ComObject {
     super([iid]); if(!Array.isArray(items)||items.length>10000)throw new ComError(HRESULT.E_INVALIDARG,'Enumeration limit exceeded');
     this.#position=integer(position,0,items.length);this.#iid=iid;this.#retain=retain;this.#release=release;this.#copy=copy;this.#items=[];
     try { for(const item of items){retain(item);this.#items.push(item);} }
-    catch(error){for(const item of this.#items)release(item);throw error;}
+    catch(error){const errors=[error];for(const item of this.#items)try{release(item);}catch(cleanup){errors.push(cleanup);}this.#items=[];if(errors.length>1)throw new AggregateError(errors,'Enumerator acquisition and rollback failed');throw error;}
   }
   Next(count=1) {
-    this.assertAlive(); integer(count,0,10000); const end=Math.min(this.#position+count,this.#items.length), values=this.#items.slice(this.#position,end).map(this.#copy);
+    this.assertAlive(); integer(count,0,10000); const end=Math.min(this.#position+count,this.#items.length),values=[];
+    try{for(let i=this.#position;i<end;i++)values.push(this.#copy(this.#items[i]));}
+    catch(error){const errors=[error];for(const value of values)try{this.#release(value);}catch(cleanup){errors.push(cleanup);}if(errors.length>1)throw new AggregateError(errors,'Enumerator copy and rollback failed');throw error;}
     this.#position=end; return {hresult:values.length===count?HRESULT.S_OK:HRESULT.S_FALSE,values,fetched:values.length};
   }
   Skip(count) { this.assertAlive();integer(count);const previous=this.#position;this.#position=Math.min(this.#items.length,previous+count);return this.#position-previous===count?HRESULT.S_OK:HRESULT.S_FALSE; }
