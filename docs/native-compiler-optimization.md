@@ -31,7 +31,7 @@ Managed records, complete Variant/Decimal semantics, class/interface and COM/OCX
 
 ## Control flow and String runtime
 
-Native `GoSub`/`Return`, `On ... GoSub` and `On ... GoTo` now have explicit lowering. Computed selectors are evaluated once and converted to Long; 0 and selectors beyond the label list fall through, while values outside 0..255 raise error 5. GoSub return addresses live in a bounded, per-procedure-activation stack separate from ESP, preserving the error-frame stack. `maxGoSubDepth` is an API option (default 1,024; allowed 1..16,384). Overflow raises error 28 and Return without GoSub raises error 3. It is an explicit resource policy, not an original-VB6 depth claim.
+Native `GoSub`/`Return`, `On ... GoSub` and `On ... GoTo` now have explicit lowering. Computed selectors are evaluated once and converted to Long; 0 and selectors beyond the label list fall through, while values outside 0..255 raise error 5. GoSub return addresses live in a bounded, per-procedure-activation stack separate from ESP, preserving the error-frame stack. `maxGoSubDepth` is an API option and is exposed as `--max-gosub-depth` in the CLI (default 1,024; allowed 1..16,384). Overflow raises error 28 and Return without GoSub raises error 3. It is an explicit resource policy, not an original-VB6 depth claim.
 
 `Do Until` and `Loop Until` respect the frontend's inverted branch polarity. Nested `With` blocks support addressable POD records, capture an indexed receiver once, and retain field ByRef aliases. Structured exits clear captured addresses; entering a block without a captured receiver raises error 91. Object/form/control With receivers still require additional lowering and remain diagnosed.
 
