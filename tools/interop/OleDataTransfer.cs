@@ -6,8 +6,9 @@ using System.Linq;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using IEnumSTATDATA=VB6Interop.OleEnumStatData;
 using STATSTG = System.Runtime.InteropServices.ComTypes.STATSTG;
-using NativeDataInterface=System.Runtime.InteropServices.ComTypes.IDataObject;
+using NativeDataInterface=VB6Interop.OleDataInterface;
 namespace VB6Interop {
   [ComImport,Guid("00000110-0000-0000-C000-000000000046"),InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
   interface NativeDataAdviseHolder {

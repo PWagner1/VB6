@@ -6,7 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 using System.Windows.Forms;
-using NativeDataInterface=System.Runtime.InteropServices.ComTypes.IDataObject;
+using NativeDataInterface=VB6Interop.OleDataInterface;
 namespace VB6Interop {
   public static partial class AutomationHost {
     static readonly HashSet<string> ActiveObjectGrants=new HashSet<string>(StringComparer.OrdinalIgnoreCase);

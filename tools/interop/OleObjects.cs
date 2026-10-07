@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using IEnumSTATDATA=VB6Interop.OleEnumStatData;
 namespace VB6Interop {
   [StructLayout(LayoutKind.Sequential)]public struct NativeOleSize {public int Width,Height;}
   [StructLayout(LayoutKind.Sequential)]public struct NativeOleRect {public int Left,Top,Right,Bottom;}
@@ -19,7 +20,7 @@ namespace VB6Interop {
     [PreserveSig]int SetClientSite(IntPtr site);[PreserveSig]int GetClientSite(out IntPtr site);
     [PreserveSig]int SetHostNames([MarshalAs(UnmanagedType.LPWStr)]string application,[MarshalAs(UnmanagedType.LPWStr)]string document);
     [PreserveSig]int Close(uint options);[PreserveSig]int SetMoniker(uint which,IMoniker moniker);[PreserveSig]int GetMoniker(uint assign,uint which,out IMoniker moniker);
-    [PreserveSig]int InitFromData(System.Runtime.InteropServices.ComTypes.IDataObject data,[MarshalAs(UnmanagedType.Bool)]bool creation,uint reserved);
+    [PreserveSig]int InitFromData(OleDataInterface data,[MarshalAs(UnmanagedType.Bool)]bool creation,uint reserved);
     [PreserveSig]int GetClipboardData(uint reserved,out IntPtr data);
     [PreserveSig]int DoVerb(int verb,IntPtr message,IntPtr site,int index,IntPtr parent,ref NativeOleRect bounds);
     [PreserveSig]int EnumVerbs(out NativeEnumOleVerb enumerator);[PreserveSig]int Update();[PreserveSig]int IsUpToDate();
@@ -79,7 +80,7 @@ namespace VB6Interop {
         else if(op=="ole.objectIsUpToDate")return D("hresult",unchecked((uint)value.IsUpToDate()));
         else if(op=="ole.objectClose")hr=value.Close((uint)ComInteger(request,"save",1,0,2));
         else if(op=="ole.objectInitFromData"){
-          var source=ObjectAt(S(request,"dataHandle")).Value as System.Runtime.InteropServices.ComTypes.IDataObject;if(source==null)throw new COMException("Source lacks IDataObject",unchecked((int)0x80004002));hr=value.InitFromData(source,ComBoolean(request,"creation"),0);
+          var source=ObjectAt(S(request,"dataHandle")).Value as OleDataInterface;if(source==null)throw new COMException("Source lacks IDataObject",unchecked((int)0x80004002));hr=value.InitFromData(source,ComBoolean(request,"creation"),0);
         }else throw new ArgumentException("Unknown OLE object operation");
         Marshal.ThrowExceptionForHR(hr);System.Windows.Forms.Application.DoEvents();return D("hresult",unchecked((uint)hr));
       }finally{entry.ActiveOperation=false;}

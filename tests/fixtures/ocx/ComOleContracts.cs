@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using IEnumSTATDATA=VB6Interop.OleEnumStatData;
 namespace VB6Interop {
   public static partial class AutomationHost {
     [ComVisible(true),ClassInterface(ClassInterfaceType.None)]
@@ -19,8 +20,8 @@ namespace VB6Interop {
       public int SetHostNames(string application,string document){Application=application;Document=document;return 0;}
       public int Close(uint options){CloseCount++;if(Sink!=null)Sink.OnClose();return 0;}
       public int SetMoniker(uint which,IMoniker moniker){return unchecked((int)0x80004001);}public int GetMoniker(uint assign,uint which,out IMoniker moniker){moniker=null;return unchecked((int)0x80004001);}
-      public int InitFromData(System.Runtime.InteropServices.ComTypes.IDataObject data,bool creation,uint reserved){return data==null?unchecked((int)0x80004003):0;}
-      public int GetClipboardData(uint reserved,out IntPtr data){data=Marshal.GetComInterfaceForObject(Data,typeof(System.Runtime.InteropServices.ComTypes.IDataObject));return 0;}
+      public int InitFromData(OleDataInterface data,bool creation,uint reserved){return data==null?unchecked((int)0x80004003):0;}
+      public int GetClipboardData(uint reserved,out IntPtr data){data=Marshal.GetComInterfaceForObject(Data,typeof(OleDataInterface));return 0;}
       public int DoVerb(int verb,IntPtr message,IntPtr site,int index,IntPtr parent,ref NativeOleRect bounds){Verb=verb;return 0;}
       public int EnumVerbs(out NativeEnumOleVerb enumerator){enumerator=new OleVerbFixture();return 0;}
       public int Update(){Updates++;if(Sink!=null)Sink.OnSave();return 0;}public int IsUpToDate(){return 1;}

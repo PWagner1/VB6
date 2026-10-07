@@ -6,7 +6,7 @@ $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $paths = @(
   'AutomationHost.cs', 'NativeDispatch.cs', 'NativeEnumeration.cs',
   'OcxSupport.cs', 'OcxPersistence.cs', 'OcxContainer.cs', 'OcxPropertyBrowsing.cs',
-  'ComServices.cs', 'OleDataTransfer.cs', 'OleObjects.cs', 'OleStructuredStorage.cs'
+  'ComServices.cs', 'OleInterfaces.cs', 'OleDataTransfer.cs', 'OleObjects.cs', 'OleStructuredStorage.cs'
 ) | ForEach-Object { Join-Path $PSScriptRoot $_ }
 $paths += Join-Path $root 'tests/fixtures/ocx/ContainerContracts.cs'
 $paths += Join-Path $root 'tests/fixtures/ocx/PropertyBrowsingContracts.cs'

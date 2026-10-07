@@ -3,6 +3,7 @@ using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
+using IEnumSTATDATA=VB6Interop.OleEnumStatData;
 namespace VB6Interop {
   public static partial class AutomationHost {
     static object DataSequenceStep(System.Collections.Generic.Dictionary<string,object> request) {
@@ -36,6 +37,12 @@ namespace VB6Interop {
           var once=Map(DataSequenceStep(D("op","ole.dataAdvise","handle",handle,"format",wire,"flags",6)));
           DataSequenceStep(D("op","ole.dataChanges"));
           DataSequenceStep(D("op","ole.dataUnadvise","connection",once["connection"]));
+          IEnumSTATDATA enumerator=null;
+          try {
+            Marshal.ThrowExceptionForHR(((OleDataInterface)ObjectAt(handle).Value).EnumDAdvise(out enumerator));
+            Require(typeof(IEnumSTATDATA).GUID.ToString()=="00000105-0000-0000-c000-000000000046","SDK advisory enumeration IID");
+            if(enumerator!=null){var rows=new STATDATA[1];var fetched=new int[1];Require(enumerator.Next(1,rows,fetched)==1&&fetched[0]==0,"expired connection is absent from enumeration");}
+          } finally {if(enumerator!=null)Marshal.ReleaseComObject(enumerator);}
           var again=Map(DataSequenceStep(D("op","ole.dataAdvise","handle",handle,"format",wire,"flags",1)));
           DataSequenceStep(D("op","ole.dataSet","handle",handle,"format",wire,"data","BAUG"));
           DataSequenceStep(D("op","ole.dataUnadvise","connection",again["connection"]));
